@@ -46,8 +46,15 @@ export const TvModePage: React.FC = () => {
       {
         onQueueChange: (syncedQueue) => {
           if (syncedQueue.length > 0) {
+            const next = syncedQueue[1];
             setCurrentSong((prev) => {
-              if (prev) return prev;
+              if (prev) {
+                return {
+                  ...prev,
+                  nextSinger: next?.singer,
+                  nextSong: next?.title,
+                };
+              }
               const first = syncedQueue[0];
               return {
                 youtubeVideoId: first.youtubeVideoId || '',
@@ -55,6 +62,8 @@ export const TvModePage: React.FC = () => {
                 artist: first.artist,
                 singer: first.singer,
                 duet: first.duet || undefined,
+                nextSinger: next?.singer,
+                nextSong: next?.title,
               };
             });
           } else {

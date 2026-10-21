@@ -58,6 +58,7 @@ export const RoomParticipantPage: React.FC = () => {
   const [selectedRating, setSelectedRating] = useState<number | null>(null);
 
   // Sincronização em Tempo Real (Supabase Realtime)
+  const [connectedParticipants, setConnectedParticipants] = useState<Array<{ id: string; name: string; isOrganizer?: boolean; joined?: string }>>([]);
   const [roomParticipants, setRoomParticipants] = useState<string[]>([]);
   const [currentStageSong, setCurrentStageSong] = useState<{
     title: string;
@@ -89,22 +90,33 @@ export const RoomParticipantPage: React.FC = () => {
       },
       {
         onParticipantsChange: (syncedParticipants) => {
+          setConnectedParticipants(syncedParticipants);
           const others = syncedParticipants
             .filter((p) => p.name !== nickname)
             .map((p) => p.name);
           setRoomParticipants(others);
         },
         onQueueChange: (syncedQueue) => {
-          setUpcomingQueue(
-            syncedQueue.map((item, idx) => ({
-              pos: `#${idx + 1}`,
+          const formatted = syncedQueue.map((item, idx) => ({
+            id: item.id,
+            pos: `#${idx + 1}`,
+            title: item.title,
+            artist: item.artist,
+            singer: item.singer,
+            duration: item.duration,
+            videoId: item.youtubeVideoId,
+          }));
+          setUpcomingQueue(formatted);
+          const mine = formatted
+            .filter((item) => item.singer.toLowerCase().includes(nickname.toLowerCase()))
+            .map((item, idx) => ({
+              id: item.id,
               title: item.title,
               artist: item.artist,
-              singer: item.singer,
-              duration: item.duration,
-              videoId: item.youtubeVideoId,
-            }))
-          );
+              position: idx + 1,
+              videoId: item.videoId,
+            }));
+          setMySongs(mine);
         },
         onCurrentSongChange: (song) => {
           if (song) {
@@ -486,6 +498,54 @@ export const RoomParticipantPage: React.FC = () => {
                         </p>
                       </div>
                       <span className="text-xs font-mono text-text-muted">{item.duration}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            {/* Galera na Festa (Participantes Conectados) */}
+            <section className="space-y-2 pt-1">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-text-secondary flex items-center gap-1.5">
+                  <Users className="w-4 h-4 text-brand-cyan-light" /> Galera na Festa ({connectedParticipants.length})
+                </h4>
+                <span className="text-[10px] font-semibold text-status-success flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-status-success animate-pulse" /> Ao Vivo
+                </span>
+              </div>
+
+              {connectedParticipants.length === 0 ? (
+                <div className="p-3 rounded-xl border border-dashed border-dark-border bg-dark-surface/40 text-center text-xs text-text-muted">
+                  Você é o primeiro a chegar! Convide a galera pelo código da sala #{code || 'SALA'}.
+                </div>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {connectedParticipants.map((p) => (
+                    <div
+                      key={p.id || p.name}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${
+                        p.name === nickname
+                          ? 'bg-brand-purple/20 text-brand-purple-light border-brand-purple/50 shadow-neon-purple/20'
+                          : 'bg-dark-surface text-text-primary border-dark-border'
+                      }`}
+                    >
+                      <span
+                        className={`w-2 h-2 rounded-full ${
+                          p.isOrganizer ? 'bg-brand-gold animate-pulse' : 'bg-brand-cyan'
+                        }`}
+                      />
+                      <span className="truncate max-w-[120px]">{p.name}</span>
+                      {p.name === nickname && (
+                        <span className="text-[9px] uppercase px-1 rounded bg-brand-purple/40 text-white font-bold">
+                          Você
+                        </span>
+                      )}
+                      {p.isOrganizer && (
+                        <span className="text-[9px] uppercase px-1 rounded bg-brand-gold/30 text-brand-gold font-bold">
+                          Host
+                        </span>
+                      )}
                     </div>
                   ))}
                 </div>
