@@ -72,13 +72,15 @@ export const TvModePage: React.FC = () => {
         },
         onCurrentSongChange: (song) => {
           if (song) {
-            setCurrentSong({
+            setCurrentSong((prev) => ({
               youtubeVideoId: song.youtubeVideoId || '',
               title: song.title,
               artist: song.artist,
               singer: song.singer,
               duet: song.duet || undefined,
-            });
+              nextSinger: prev?.nextSinger,
+              nextSong: prev?.nextSong,
+            }));
           } else {
             setCurrentSong(null);
           }
