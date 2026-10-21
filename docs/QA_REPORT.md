@@ -2,7 +2,7 @@
 
 **Responsável:** Engenheiro de Qualidade Sênior (Q.A Sênior)  
 **Ambiente Testado:** Produção / Portal Web (`https://karaoke.kelvinmoreira.com.br`)  
-**Data da Execução:** 21/10/2026 00:07 (BRT)  
+**Data da Execução:** 21/10/2026 00:31 (BRT)  
 **Ferramentas Utilizadas:** Maestri Portal Automation (`snapshot`, `navigate`, `click`, `fill`, `evaluate`, `logs`)  
 
 ---
@@ -12,73 +12,60 @@
 | Ciclo | Tarefa | Escopo Principal | Status | Conformidade |
 | :---: | :---: | :--- | :---: | :---: |
 | **Ciclo 01** | `TASK-QA-01` | Validação de Entrada de Participante, Fila, Organizador e Telão Inicial | Aprovado c/ Ressalva | 92% |
-| **Ciclo 02** | `TASK-QA-02` | Validação do Telão Gigante, Fix BUG-QA-01, Contagem 10s, Auto-Advance e Controles Remotos | **APROVADO** ✅ | **100%** |
+| **Ciclo 02** | `TASK-QA-02` | Validação do Telão Gigante, Fix BUG-QA-01, Contagem 10s, Auto-Advance e Controles Remotos | Aprovado | 100% |
+| **Ciclo 03** | `TASK-QA-03` | Busca Estilo YouTube (16:9), Thumbnails na Fila e Limpeza Visual de Badges | **APROVADO** ✅ | **100%** |
 
 ---
 
-## 2. Validação do Ciclo 02 — `TASK-QA-02`
+## 2. Validação do Ciclo 03 — `TASK-QA-03`
 
-### 2.1 Telão TV (`https://karaoke.kelvinmoreira.com.br/tv/FESTA1`)
+### 2.1 Busca no Estilo YouTube (`https://karaoke.kelvinmoreira.com.br/room/FESTA1`)
 - **Objetivos Verificados:**
-  1. **Player Maximizado:** Inspecionado o contêiner do player de vídeo. Possui as classes responsivas `max-h-[78vh] md:max-h-[82vh]`, garantindo aproveitamento de praticamente toda a área visual do telão com borda neon e gradiente (`shadow-neon-purple`).
-  2. **Resolução de BUG-QA-01:** O componente *"A SEGUIR:"* foi verificado após atualizações de estado do palco. O próximo cantor (`Tester QA`) e a próxima música (`🎤 Não Quero Dinheiro - Tim Maia - Karaokê` - `#2`) são exibidos sem regredir para *"Fila Vazia"*. **Defeito BUG-QA-01 formalmente resolvido e validado em produção.**
-  3. **Contagem Regressiva de 10s:** Ao término da reprodução (evento `onStateChange = 0` do player do YouTube), o telão ativa o overlay de pós-show:
-     - Título: *"SHOW FINALIZADO! AVALIEM NO CELULAR!"*
-     - Contador numérico decrescente em destaque dourado (`10s` ... `5s` ... `0s`).
-     - Barra de progresso decrescente suave animada via CSS linear (`style={{ width: (remaining / 10) * 100% }}`).
-     - Indicação da próxima atração aguardando na fila.
-  4. **Auto-Advance:** Ao término dos 10 segundos de avaliação, a fila é promovida de forma 100% automática, inserindo a próxima faixa no palco (`Não Quero Dinheiro - Tim Maia`) e carregando o respectivo vídeo no iframe do YouTube.
+  1. **Cards com Thumbnail Grande em Cima (16:9):** Os resultados da busca renderizam um contêiner de imagem de vídeo com aspecto widescreen exato de 16:9 (`435x245px`).
+  2. **Título Completo sem Cortes:** O título da música é exibido logo abaixo da thumbnail em bloco com leitura integral, sem elipses ou truncamento precoce (ex.: `🎼 TIM MAIA 🎵 AZAUL DA COR DO MAR - PRIMAVERA - VOCE -0 GOSTAVA TANTO - POUT PORRI - KARAOKÊ`).
+  3. **Identificação e Call-to-Action:** Tag badge `Karaokê`, canal do artista e botão de ação `Cantar essa no Palco!`.
 - **Status do Cenário:** **APROVADO** ✅
 
 ---
 
-### 2.2 Painel do Organizador (`https://karaoke.kelvinmoreira.com.br/organizer/FESTA1`)
+### 2.2 Exibição de Thumbnails na Fila (`/room/FESTA1` e `/organizer/FESTA1`)
 - **Objetivos Verificados:**
-  1. **Controles Remotos de Playback:**
-     - **Play / Pausar:** Testado clique alternado. Ao clicar em `Play`, o botão transiciona visualmente para `Pausar` e emite o comando de reprodução ao telão. Ao clicar em `Pausar`, transiciona de volta para `Play`.
-     - **Reiniciar:** O botão `Reiniciar` envia comando de seek para `00:00`, reativa o estado de execução e atualiza o player no telão.
-     - **Pular:** O botão `Pular` executa `advanceToNextSong()`, avançando a faixa do palco imediatamente e sincronizando a contagem da fila de espera (`Música pulada! Próxima atração no palco.`).
-  2. **Banner de Contagem Regressiva:**
-     - Exibe banner com gradiente dourado e contador decrescente de 10 segundos quando o ciclo de avaliação está em andamento.
-     - Barra de progresso sincronizada em tempo real com o telão.
-     - Botão `Pular Contagem e Iniciar Próxima Agora` operacional para avanço manual emergencial pelo organizador.
+  1. **Visão do Participante (`/room/FESTA1`):** As listas **"MINHAS MÚSICAS"** e **"PRÓXIMOS NA FILA"** exibem as thumbnails oficiais (`56x40px`) renderizadas diretamente das URLs de miniaturas (`i.ytimg.com/vi/.../mqdefault.jpg`).
+  2. **Visão do Organizador (`/organizer/FESTA1`):** A seção **"Fila de Espera"** apresenta cada item com sua miniatura correspondente alinhada à esquerda, mantendo os controles de reordenação VIP, subida, descida e remoção.
+  3. **Visão do Telão (`/tv/FESTA1`):** O rodapé **"A Seguir"** também incorpora a thumbnail da próxima música a entrar no palco (`48x36px`).
 - **Status do Cenário:** **APROVADO** ✅
 
 ---
 
-### 2.3 Participante (`https://karaoke.kelvinmoreira.com.br/room/FESTA1`)
+### 2.3 Limpeza de UI: Ausência Total de Badges do Supabase
 - **Objetivos Verificados:**
-  1. **Modal de Votação Interativa (1 a 5 Estrelas):**
-     - O modal é disparado via broadcast no encerramento da música (ou manualmente pelo botão de teste).
-     - Renderização de 5 botões de estrela (`⭐`) com efeito de escala e glow neon ao selecionar.
-     - Feedback contextual dinâmico por nota (ex.: nota 5 exibe *"PROFISSIONAL! SHOW HISTÓRICO! 🌟"*).
-     - Botão `Confirmar Meu Voto` inicia desabilitado e torna-se ativo após a seleção de uma nota, enviando a avaliação via Supabase Realtime ao ser clicado.
-  2. **Barra de Contagem Regressiva (10s):**
-     - Exibição de contador `10s` decrescente em caixa destacada.
-     - Barra de progresso com gradiente tricolor (`purple -> pink -> gold`) decrescendo sincronizada com o telão da TV e painel do organizador.
+  1. **Tela Inicial (`/`):** Badge, botão de ping e modal de auditoria de conexão removidos integralmente.
+  2. **Sala do Participante (`/room/FESTA1`):** Header limpo com apenas o botão de retorno, nome da sala e perfil do participante.
+  3. **Painel do Organizador (`/organizer/FESTA1`):** Removidos indicadores de latência e heartbeat técnico do header.
+  4. **Modo Telão TV (`/tv/FESTA1`):** Zero poluição visual técnica; foco exclusivo no palco, QR Code e identidade da festa.
+  5. **Verificação Programática:** Inspeção via `document.body.innerText.toLowerCase().includes('supabase')` retornou `false` em 100% das rotas públicas e administrativas.
 - **Status do Cenário:** **APROVADO** ✅
 
 ---
 
-## 3. Matriz de Rastreabilidade e Resolução de Bugs
+## 3. Matriz Consolidada de Homologação
 
-| ID | Descrição | Origem | Status Atual | Validação |
-| :---: | :--- | :---: | :---: | :---: |
-| **BUG-QA-01** | `nextSinger` e `nextSong` regrediam para nulo ao atualizar palco no Telão | `TvModePage.tsx` | **RESOLVIDO** ✅ | Validado no portal; próximo cantor e música persistem no card "A Seguir". |
-
----
-
-## 4. Veredito Geral e Homologação Final
-
-Todos os fluxos críticos de experiência do usuário, moderação do evento e exibição em alta definição foram testados e aprovados:
-
-1. **Estabilidade de Rede e Supabase:** Latência de ping entre 140ms e 460ms com reconexão resiliente.
-2. **Tempo Real (WebSockets):** Sincronização instantânea de estado entre Participante, Organizador e Telão TV.
-3. **Ergonomia e Design System:** Identidade Dark Neon consistente, transições suaves e responsividade em todos os dispositivos.
-
-**Veredito de Engenharia de Qualidade:** **HOMOLOGADO PARA PRODUÇÃO (100% APROVADO)** 🚀🎤✨
+| Recurso / Componente | Participante | Organizador | Modo TV | Status |
+| :--- | :---: | :---: | :---: | :---: |
+| **Cards de Busca YouTube 16:9** | Sim | Sim (Link direto) | N/A | **Aprovado** ✅ |
+| **Thumbnails nos Itens da Fila** | Sim | Sim | Sim | **Aprovado** ✅ |
+| **Player Telão Gigante (82vh)** | N/A | N/A | Sim | **Aprovado** ✅ |
+| **Contagem 10s Pós-Show** | Sim | Sim | Sim | **Aprovado** ✅ |
+| **Auto-Advance da Fila** | Sincronizado | Sincronizado | Ativo | **Aprovado** ✅ |
+| **Controles Remotos (Play/Pause/Skip/Restart)** | N/A | Sim | Reativo | **Aprovado** ✅ |
+| **Limpeza Visual (Sem Badges Técnicos)** | Limpo | Limpo | Limpo | **Aprovado** ✅ |
 
 ---
 
+## 4. Veredito Geral
+
+A aplicação atinge **100% de conformidade** com padrões profissionais de UI/UX para eventos ao vivo. As novas diretrizes visuais proporcionam uma experiência imersiva de YouTube sem ruídos técnicos.
+
+**Assinatura:**  
 *Q.A Sênior — Engenharia de Qualidade Karaokê da Festa*  
 *Maestri Spatial Development Canvas*
