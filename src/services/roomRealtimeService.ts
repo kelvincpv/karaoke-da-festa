@@ -4,7 +4,7 @@
  * 100% compatível com as regras e constraints de supabase/SCHEMA_COMPLETO.sql.
  */
 
-import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { supabase, isSupabaseConfigured, supabaseUrl, supabaseAnonKey } from '../lib/supabase';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { isSelfSinger, getPerformanceKey } from '../lib/utils';
 
@@ -71,6 +71,7 @@ export interface RoomSyncCallbacks {
   onRankingsChange?: (rankings: RankingItemSync[]) => void;
   onPlaybackCommand?: (command: PlaybackCommandPayload) => void;
   onVotingCountdown?: (countdown: VotingCountdownPayload) => void;
+  onRoomDeleted?: () => void;
 }
 
 export class RoomRealtimeService {
@@ -86,6 +87,7 @@ export class RoomRealtimeService {
   private participantDbId: string | null = null;
   private sessionToken: string;
   private votedPerformances: Set<string> = new Set();
+  private heartbeatInterval: NodeJS.Timeout | null = null;
 
   constructor(
     roomCode: string,
@@ -97,6 +99,37 @@ export class RoomRealtimeService {
     this.callbacks = callbacks;
     this.sessionToken = this.getOrCreateSessionToken();
     this.loadVotedPerformances();
+    this.setupBeforeUnload();
+  }
+
+  /**
+   * Configura limpeza resiliente da sala ao fechar aba ou navegador
+   */
+  private setupBeforeUnload(): void {
+    if (typeof window === 'undefined') return;
+    window.addEventListener('beforeunload', () => {
+      if (isSupabaseConfigured && this.roomId && this.participantDbId) {
+        try {
+          const url = `${supabaseUrl}/rest/v1/rpc/rpc_leave_and_cleanup_room`;
+          const body = JSON.stringify({
+            p_room_id: this.roomId,
+            p_participant_id: this.participantDbId,
+          });
+          fetch(url, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              apikey: supabaseAnonKey,
+              Authorization: `Bearer ${supabaseAnonKey}`,
+            },
+            body,
+            keepalive: true,
+          });
+        } catch {
+          // ignore
+        }
+      }
+    });
   }
 
   /**
@@ -185,6 +218,11 @@ export class RoomRealtimeService {
         if (this.callbacks.onParticipantsChange) {
           this.callbacks.onParticipantsChange(participantList);
         }
+
+        // Auto-cleanup: se a sala esvaziar completamente no Realtime, executa rotina de exclusão no Supabase
+        if (participantList.length === 0 && isSupabaseConfigured && this.roomId) {
+          supabase.rpc('rpc_leave_and_cleanup_room', { p_room_id: this.roomId });
+        }
       })
       .on('presence', { event: 'join' }, () => {
         if (this.currentUser.isOrganizer || this.currentQueue.length > 0) {
@@ -194,6 +232,9 @@ export class RoomRealtimeService {
 
     // BROADCAST: Fila de músicas, palco, votação e reações
     this.channel
+      .on('broadcast', { event: 'room_closed' }, () => {
+        this.callbacks.onRoomDeleted?.();
+      })
       .on('broadcast', { event: 'queue_update' }, ({ payload }) => {
         if (Array.isArray(payload?.queue)) {
           this.currentQueue = payload.queue;
@@ -306,12 +347,64 @@ export class RoomRealtimeService {
           () => {
             this.reloadParticipantsFromDatabase();
           }
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'performances',
+            filter: `room_id=eq.${this.roomId}`,
+          },
+          () => {
+            this.reloadRankingsFromDatabase();
+          }
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'ratings',
+            filter: `room_id=eq.${this.roomId}`,
+          },
+          () => {
+            this.reloadRankingsFromDatabase();
+          }
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: 'DELETE',
+            schema: 'public',
+            table: 'rooms',
+            filter: `id=eq.${this.roomId}`,
+          },
+          () => {
+            this.callbacks.onRoomDeleted?.();
+          }
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'rooms',
+            filter: `id=eq.${this.roomId}`,
+          },
+          (payload: any) => {
+            if (payload?.new && typeof payload.new.voting_open === 'boolean') {
+              this.votingOpen = payload.new.voting_open;
+              this.callbacks.onVotingChange?.(this.votingOpen);
+            }
+          }
         );
     }
 
     // Iniciar inscrição no canal
     await this.channel.subscribe(async (status) => {
       if (status === 'SUBSCRIBED' && this.channel) {
+        this.startHeartbeat();
         await this.channel.track({
           id: this.currentUser.id || this.sessionToken,
           name: this.currentUser.name,
@@ -623,7 +716,7 @@ export class RoomRealtimeService {
   }
 
   /**
-   * Recarrega o ranking da sala persistido no PostgreSQL ou localStorage
+   * Recarrega o ranking da sala persistido no PostgreSQL (Tabela performances & RPC rpc_get_rankings)
    */
   public async reloadRankingsFromDatabase(): Promise<void> {
     if (!isSupabaseConfigured || !this.roomId) return;
@@ -642,7 +735,29 @@ export class RoomRealtimeService {
         }));
         this.rankings = mapped;
         this.callbacks.onRankingsChange?.(mapped);
-        localStorage.setItem(`karaoke_rankings_${this.roomCode}`, JSON.stringify(mapped));
+        return;
+      }
+
+      // Fallback: consulta direta na tabela performances
+      const { data: dbPerfs } = await supabase
+        .from('performances')
+        .select('song_title, average_stars, total_votes, score_points, singer_id, participants!singer_id(nickname)')
+        .eq('room_id', this.roomId)
+        .order('score_points', { ascending: false });
+
+      if (dbPerfs && dbPerfs.length > 0) {
+        const mapped: RankingItemSync[] = dbPerfs.map((p: any, idx: number) => ({
+          pos: idx + 1,
+          name: p.participants?.nickname || 'Cantor',
+          song: p.song_title || 'Show de Karaokê',
+          stars: Number(p.average_stars || 5).toFixed(1),
+          averageStars: Number(p.average_stars || 5),
+          points: Number(p.score_points || 0),
+          totalVotes: Number(p.total_votes || 1),
+          lastUpdated: Date.now(),
+        }));
+        this.rankings = mapped;
+        this.callbacks.onRankingsChange?.(mapped);
       }
     } catch (err) {
       console.warn('[Realtime] Erro ao recarregar rankings do banco:', err);
@@ -827,6 +942,17 @@ export class RoomRealtimeService {
             .from('queue_items')
             .update({ status: 'completed' })
             .eq('id', finishedSong.id);
+
+          const isUuid = (v?: string | null) =>
+            typeof v === 'string' &&
+            /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
+
+          if (isUuid(finishedSong.id)) {
+            await supabase.rpc('rpc_finish_performance', {
+              p_room_id: this.roomId,
+              p_queue_item_id: finishedSong.id,
+            });
+          }
         }
         await supabase
           .from('rooms')
@@ -835,6 +961,9 @@ export class RoomRealtimeService {
             voting_open: false,
           })
           .eq('id', this.roomId);
+
+        // Recarrega rankings diretamente consolidados do Supabase
+        await this.reloadRankingsFromDatabase();
       } catch (err) {
         console.warn('[Realtime] Erro ao avançar música no banco:', err);
       }
@@ -892,13 +1021,69 @@ export class RoomRealtimeService {
   }
 
   /**
-   * Desconecta o canal e remove presença
+   * Inicia pulso de atividade para manter o participante ativo no PostgreSQL
    */
-  public disconnect(): void {
+  private startHeartbeat(): void {
+    if (this.heartbeatInterval) clearInterval(this.heartbeatInterval);
+    this.heartbeatInterval = setInterval(async () => {
+      if (isSupabaseConfigured && this.roomId && this.participantDbId) {
+        try {
+          await supabase
+            .from('participants')
+            .update({ last_active_at: new Date().toISOString() })
+            .eq('id', this.participantDbId);
+        } catch {
+          // ignore
+        }
+      }
+    }, 45000);
+  }
+
+  /**
+   * Desconecta o canal, remove presença e aciona rotina de auto-cleanup (exclui a sala se esvaziar)
+   */
+  public async disconnect(): Promise<void> {
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval);
+      this.heartbeatInterval = null;
+    }
+
+    if (isSupabaseConfigured && this.roomId) {
+      try {
+        await supabase.rpc('rpc_leave_and_cleanup_room', {
+          p_room_id: this.roomId,
+          p_participant_id: this.participantDbId,
+        });
+      } catch (err) {
+        console.warn('[Realtime] Erro ao executar cleanup ao desconectar:', err);
+      }
+    }
+
     if (this.channel) {
       this.channel.untrack();
       supabase.removeChannel(this.channel);
       this.channel = null;
+    }
+  }
+
+  /**
+   * Encerra e exclui deliberadamente a sala e todos os seus registros do Supabase (Ação do Organizador)
+   */
+  public async closeAndDeleteRoom(): Promise<boolean> {
+    if (!this.roomId) return true;
+    try {
+      this.channel?.send({
+        type: 'broadcast',
+        event: 'room_closed',
+        payload: { message: 'A sala foi encerrada pelo organizador.' },
+      });
+
+      await supabase.rpc('rpc_delete_room', { p_room_id: this.roomId });
+      await supabase.from('rooms').delete().eq('id', this.roomId);
+      return true;
+    } catch (err) {
+      console.warn('[Realtime] Erro ao excluir sala do Supabase:', err);
+      return false;
     }
   }
 

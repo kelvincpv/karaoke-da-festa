@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import {
   Shield,
   Play,
@@ -52,6 +52,7 @@ interface ParticipantLocal {
 
 export const OrganizerPage: React.FC = () => {
   const { code } = useParams<{ code: string }>();
+  const navigate = useNavigate();
   const [copied, setCopied] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [votingOpen, setVotingOpen] = useState(false);
@@ -127,6 +128,9 @@ export const OrganizerPage: React.FC = () => {
         },
         onRankingsChange: (newRankings) => {
           setRankings(newRankings);
+        },
+        onRoomDeleted: () => {
+          navigate('/');
         },
       }
     );
@@ -246,6 +250,18 @@ export const OrganizerPage: React.FC = () => {
     showToast('Janela externa do YouTube fechada.');
   };
 
+  const handleCloseAndDestroyRoom = async () => {
+    if (
+      window.confirm(
+        `Tem certeza que deseja encerrar a sala "${code || 'FESTA1'}"? A sala e todos os dados associados serão excluídos do banco de dados Supabase.`
+      )
+    ) {
+      await serviceRef.current?.closeAndDeleteRoom();
+      showToast('Sala encerrada e excluída com sucesso do Supabase.');
+      setTimeout(() => navigate('/'), 800);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-dark-base text-text-primary p-4 lg:p-6 flex flex-col gap-6">
       {/* Top Header Bar */}
@@ -316,6 +332,16 @@ export const OrganizerPage: React.FC = () => {
           >
             <Tv className="w-4 h-4" /> Abrir Modo TV
           </Link>
+
+          <button
+            onClick={handleCloseAndDestroyRoom}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-status-danger/40 bg-status-danger/15 text-status-danger hover:bg-status-danger/25 transition-all text-xs font-bold shadow-sm"
+            title="Encerrar a festa e excluir permanentemente a sala no Supabase"
+          >
+            <Trash2 className="w-4 h-4" />
+            <span className="hidden sm:inline">Encerrar e Excluir Sala</span>
+            <span className="sm:hidden">Encerrar</span>
+          </button>
         </div>
       </header>
 

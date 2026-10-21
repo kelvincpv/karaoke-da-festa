@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import {
   Sparkles,
   Mic,
@@ -50,6 +50,7 @@ interface CurrentTvSong {
 
 export const TvModePage: React.FC = () => {
   const { code } = useParams<{ code: string }>();
+  const navigate = useNavigate();
   const [reactions, setReactions] = useState<FloatingReaction[]>([]);
   const [isVoting, setIsVoting] = useState(false);
   const [currentSong, setCurrentSong] = useState<CurrentTvSong | null>(null);
@@ -452,6 +453,9 @@ export const TvModePage: React.FC = () => {
         },
         onRankingsChange: (newRankings) => {
           setRankings(newRankings);
+        },
+        onRoomDeleted: () => {
+          navigate('/');
         },
       }
     );

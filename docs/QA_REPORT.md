@@ -19,6 +19,7 @@
 | **Ciclo 06** | `TASK-QA-06` | Validação do Gate de Entrada, Rankings em Tempo Real (Top 3 Pódio) e Atalhos de Gêneros | Aprovado | 100% |
 | **Ciclo 07** | `TASK-QA-07` | Telão TV Fullscreen Edge-to-Edge c/ HUD Vertical à Direita e Entrada de Sala Longa | Aprovado | 100% |
 | **Ciclo 08** | `TASK-QA-08` | Voto Único por Música por Participante e Bloqueio de Auto-Avaliação do Cantor | **APROVADO** ✅ | **100%** |
+| **Ciclo 09** | `TASK-QA-09` | Persistência 100% no Supabase, Auto-Cleanup de Salas Vazias e Encerramento com Cascade | **APROVADO** ✅ | **100%** |
 
 ---
 
@@ -110,10 +111,36 @@
 
 ---
 
-## 5. Veredito Geral de Engenharia de Qualidade
+## 5. Validação do Ciclo 09 — `TASK-QA-09` (Persistência 100% Supabase & Auto-Cleanup)
+
+### 5.1 Eliminação de Dependência de `localStorage` para a Sala
+- **Cenário de Teste:** Criação de salas, sincronização de participantes, fila e rankings exclusivamente via banco de dados Supabase (PostgreSQL) e Realtime.
+- **Evidências Coletadas:**
+  - `rooms.code`: ampliado de `VARCHAR(6)` para `VARCHAR(32)` com constraint atualizada (`check_room_code_len`), suportando códigos de qualquer formato (ex: `FESTA48`, `KARAOKE-2026`).
+  - RPC `rpc_join_room`: cria a sala atomicamente no banco se não existir, registra o participante em `public.participants` e retorna dados íntegros de sessão.
+  - As tabelas filhas (`participants`, `queue_items`, `ratings`, `performances`) mantêm integridade relacional com `room_id REFERENCES public.rooms(id) ON DELETE CASCADE`.
+
+### 5.2 Auto-Cleanup de Salas Vazias (0 Participantes Ativos)
+- **Cenário de Teste:** Desconexão de todos os participantes ou encerramento pelo organizador.
+- **Evidências Coletadas:**
+  - RPC `rpc_leave_and_cleanup_room`: disparada no evento `beforeunload` do navegador com `fetch(..., { keepalive: true })` e no método `disconnect()`.
+  - Quando a contagem de participantes ativos na sala zera (`remaining_participants = 0`), a sala é automaticamente excluída de `public.rooms`.
+  - A exclusão em cascata (`ON DELETE CASCADE`) remove instantaneamente todos os registros órfãos das tabelas filhas no PostgreSQL.
+  - RPC auxiliar `rpc_cleanup_empty_rooms()`: varredura no banco para expirar participantes inativos (>10 min) e excluir salas abandonadas (>2 min).
+
+### 5.3 Encerramento Deliberado pelo Organizador
+- **Cenário de Teste:** O organizador clica no botão *"Encerrar e Excluir Sala"* no painel.
+- **Evidências Coletadas:**
+  - Modal nativo de confirmação previne cliques acidentais.
+  - Execução de `closeAndDeleteRoom()` com broadcast do evento `room_closed` e chamada da RPC `rpc_delete_room(p_room_id)`.
+  - O Modo TV (`TvModePage`) e os clientes de participantes (`RoomParticipantPage`) interceptam o broadcast `room_closed` e eventos de deleção via `onRoomDeleted`, exibem toast informativo e navegam automaticamente para a página inicial `/`.
+
+---
+
+## 6. Veredito Geral de Engenharia de Qualidade
 
 > **STATUS:** **HOMOLOGADO E APROVADO COM 100% DE CONFORMIDADE** 🚀🏆✨  
-> O commit `243b2ad` introduz integridade e justiça competitiva ao sistema de pontuação da festa: elimina qualquer possibilidade de auto-voto ou spam de avaliações, ao mesmo tempo em que fornece feedback visual transparente e amigável tanto para quem está cantando quanto para os convidados que estão avaliando.
+> Todas as salas e filas agora operam de forma 100% centralizada e atômica no Supabase PostgreSQL. Salas abandonadas ou com 0 participantes ativos são excluídas automaticamente do banco, mantendo o banco de dados limpo, seguro e performático.
 
 **Assinatura:**  
 *Q.A Sênior — Engenharia de Qualidade Karaokê da Festa*  

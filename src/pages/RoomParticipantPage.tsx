@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import {
   Mic,
   Music,
@@ -41,6 +41,7 @@ interface FloatingReactionInstance {
 
 export const RoomParticipantPage: React.FC = () => {
   const { code } = useParams<{ code: string }>();
+  const navigate = useNavigate();
   const roomCode = (code || 'FESTA1').toUpperCase();
 
   // Entrada Obrigatória com Nome / Apelido ao escanear o QR Code
@@ -207,6 +208,10 @@ export const RoomParticipantPage: React.FC = () => {
           setTimeout(() => {
             setReactions((prev) => prev.filter((r) => r.id !== reaction.id));
           }, 2500);
+        },
+        onRoomDeleted: () => {
+          showToast('A sala foi encerrada pelo organizador e removida do banco de dados.');
+          setTimeout(() => navigate('/'), 1500);
         },
       }
     );

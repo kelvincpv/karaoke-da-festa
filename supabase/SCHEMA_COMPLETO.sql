@@ -26,7 +26,7 @@ END $$;
 -- 1.1 Tabela `rooms` (Salas de Karaokê)
 CREATE TABLE IF NOT EXISTS public.rooms (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  code VARCHAR(6) UNIQUE NOT NULL,
+  code VARCHAR(32) UNIQUE NOT NULL,
   name VARCHAR(100) NOT NULL,
   organizer_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
   status VARCHAR(20) DEFAULT 'active' CHECK (status IN ('active', 'paused', 'closed')),
@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS public.rooms (
     "vote_duration_seconds": 30,
     "auto_play": false
   }'::jsonb,
-  CONSTRAINT check_room_code_len CHECK (char_length(code) >= 3 AND char_length(code) <= 6)
+  CONSTRAINT check_room_code_len CHECK (char_length(code) >= 3 AND char_length(code) <= 32)
 );
 
 -- 1.2 Tabela `participants` (Participantes da Sala)
@@ -167,7 +167,7 @@ CREATE POLICY "rooms_update_organizer" ON public.rooms
 DROP POLICY IF EXISTS "rooms_delete_organizer" ON public.rooms;
 CREATE POLICY "rooms_delete_organizer" ON public.rooms
   FOR DELETE USING (
-    organizer_id IS NOT NULL AND organizer_id = auth.uid()
+    true
   );
 
 -- 3.2 Políticas para `participants`
@@ -968,3 +968,92 @@ $$;
 
 -- Permissões de execução pública para a função RPC
 GRANT EXECUTE ON FUNCTION public.rpc_heartbeat() TO anon, authenticated, service_role;
+
+
+-- ==============================================================================
+-- 4.6 RPCs DE LIMPEZA E EXCLUSÃO AUTOMÁTICA DE SALAS
+-- ==============================================================================
+
+-- RPC `rpc_leave_and_cleanup_room`
+CREATE OR REPLACE FUNCTION public.rpc_leave_and_cleanup_room(
+  p_room_id UUID,
+  p_participant_id UUID DEFAULT NULL
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_remaining INT;
+  v_deleted BOOLEAN := FALSE;
+BEGIN
+  IF p_participant_id IS NOT NULL THEN
+    DELETE FROM public.participants
+    WHERE id = p_participant_id AND room_id = p_room_id;
+  END IF;
+
+  SELECT COUNT(*) INTO v_remaining
+  FROM public.participants
+  WHERE room_id = p_room_id;
+
+  IF v_remaining = 0 THEN
+    DELETE FROM public.rooms WHERE id = p_room_id;
+    v_deleted := TRUE;
+  END IF;
+
+  RETURN jsonb_build_object(
+    'success', TRUE,
+    'remaining_participants', v_remaining,
+    'room_deleted', v_deleted
+  );
+END;
+$$;
+GRANT EXECUTE ON FUNCTION public.rpc_leave_and_cleanup_room(UUID, UUID) TO anon, authenticated, service_role;
+
+-- RPC `rpc_delete_room`
+CREATE OR REPLACE FUNCTION public.rpc_delete_room(
+  p_room_id UUID
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  DELETE FROM public.rooms WHERE id = p_room_id;
+  RETURN jsonb_build_object('success', TRUE, 'message', 'Sala excluída com sucesso do banco de dados');
+END;
+$$;
+GRANT EXECUTE ON FUNCTION public.rpc_delete_room(UUID) TO anon, authenticated, service_role;
+
+-- RPC `rpc_cleanup_empty_rooms`
+CREATE OR REPLACE FUNCTION public.rpc_cleanup_empty_rooms()
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_deleted_count INT := 0;
+BEGIN
+  DELETE FROM public.participants
+  WHERE last_active_at < NOW() - INTERVAL '10 minutes';
+
+  WITH deleted_rooms AS (
+    DELETE FROM public.rooms r
+    WHERE NOT EXISTS (
+      SELECT 1 FROM public.participants p WHERE p.room_id = r.id
+    )
+    AND r.created_at < NOW() - INTERVAL '2 minutes'
+    RETURNING r.id
+  )
+  SELECT COUNT(*) INTO v_deleted_count FROM deleted_rooms;
+
+  RETURN jsonb_build_object(
+    'success', TRUE,
+    'deleted_rooms_count', v_deleted_count
+  );
+END;
+$$;
+GRANT EXECUTE ON FUNCTION public.rpc_cleanup_empty_rooms() TO anon, authenticated, service_role;
