@@ -1,8 +1,8 @@
 # Relatório Oficial de Garantia da Qualidade (QA) — Karaokê da Festa 🎤✨
 
 **Responsável:** Engenheiro de Qualidade Sênior (Q.A Sênior)  
-**Ambiente Testado:** Produção / Portal Web (`https://karaoke.kelvinmoreira.com.br`) & Branch `main` (`243b2ad`)  
-**Data da Execução:** 21/10/2026 19:50 (BRT)  
+**Ambiente Testado:** Produção / Portal Web (`https://karaoke.kelvinmoreira.com.br`) & Branch `main` (`b3027b1`)  
+**Data da Execução:** 21/10/2026 20:39 (BRT)  
 **Ferramentas Utilizadas:** Git CLI, TypeScript Compiler (`tsc`), Vite Build, Maestri Portal Automation  
 
 ---
@@ -18,88 +18,52 @@
 | **Ciclo 05** | `TASK-QA-05` | Revisão Técnica e Homologação da Extensão Chrome **Karaokê Bridge** (`9cf6375`) | Aprovado | 100% |
 | **Ciclo 06** | `TASK-QA-06` | Validação do Gate de Entrada, Rankings em Tempo Real (Top 3 Pódio) e Atalhos de Gêneros | Aprovado | 100% |
 | **Ciclo 07** | `TASK-QA-07` | Telão TV Fullscreen Edge-to-Edge c/ HUD Vertical à Direita e Entrada de Sala Longa | Aprovado | 100% |
-| **Ciclo 08** | `TASK-QA-08` | Voto Único por Música por Participante e Bloqueio de Auto-Avaliação do Cantor | **APROVADO** ✅ | **100%** |
+| **Ciclo 08** | `TASK-QA-08` | Voto Único por Música por Participante e Bloqueio de Auto-Avaliação do Cantor | Aprovado | 100% |
 | **Ciclo 09** | `TASK-QA-09` | Persistência 100% no Supabase, Auto-Cleanup de Salas Vazias e Encerramento com Cascade | **APROVADO** ✅ | **100%** |
 
 ---
 
-## 2. Validação do Ciclo 08 — `TASK-QA-08` (Commit `243b2ad`)
+## 2. Validação do Ciclo 09 — `TASK-QA-09` (Commit `b3027b1`)
 
-### 2.1 Bloqueio de Auto-Avaliação para Quem Está Cantando (e Dueto)
-- **Cenário de Teste:** O participante cujo apelido coincide com o cantor(a) ou parceiro de dueto da música ativa no palco acessa a sala e tenta avaliar a performance.
+### 2.1 Persistência 100% no Supabase PostgreSQL & Eliminação de Dependência de LocalStorage
+- **Cenário de Teste:** Criação de salas, sincronização de participantes, fila e rankings exclusivamente via banco de dados Supabase (PostgreSQL) e Realtime.
 - **Evidências Coletadas:**
-  - **No Card do Palco (`RoomParticipantPage.tsx`):** O botão *"Avaliar Cantoria ⭐"* é automaticamente suprimido e substituído pelo badge comemorativo:
-    - Ícone de microfone pulsante (`<Mic className="animate-pulse" />`).
-    - Texto: *"Você está no palco agora! 🎤 Dê um show!"*.
-  - **No Modal de Votação (Ciclo Pós-Show ou Abertura Manual):**
-    - A interface do participante que está cantando não renderiza os botões de 1 a 5 estrelas nem o botão de confirmação.
-    - É apresentada a tela de bloqueio comemorativa: *"Você no Palco! Show de {Cantor}! Você não pode avaliar a sua própria apresentação. Relaxe e aproveite os aplausos da galera! 🎤✨"*.
-    - Renderiza a barra de contagem dos votos dos outros convidados em tempo real (`A galera está votando: {X}s`).
-  - **No Serviço em Tempo Real (`roomRealtimeService.ts`):** Validação estrita via função `isSelfSinger(singer, duet, currentUser.name)`, rejeitando programmaticamente qualquer tentativa com `{ success: false, message: 'Você está no palco e não pode avaliar a sua própria apresentação!' }`.
+  - `rooms.code`: ampliado de `VARCHAR(6)` para `VARCHAR(32)` com constraint atualizada (`check_room_code_len`), suportando códigos de qualquer formato (ex: `FESTA48`, `KARAOKE-2026`).
+  - RPC `rpc_join_room`: cria a sala atomicamente no banco se não existir, registra o participante em `public.participants` e retorna dados íntegros de sessão.
+  - As tabelas filhas (`participants`, `queue_items`, `ratings`, `performances`) mantêm integridade relacional com `room_id REFERENCES public.rooms(id) ON DELETE CASCADE`.
 - **Status:** **APROVADO** ✅
 
 ---
 
-### 2.2 Garantia de Voto Único por Participante por Música
-- **Cenário de Teste:** O participante envia sua nota de 1 a 5 estrelas e tenta votar novamente durante a mesma apresentação ou janela de votação.
+### 2.2 Auto-Cleanup de Salas Vazias (0 Participantes Ativos)
+- **Cenário de Teste:** Desconexão de todos os participantes ou encerramento pelo organizador.
 - **Evidências Coletadas:**
-  - **Chave Determinística de Performance:** A função `getPerformanceKey(songId, singer, songTitle)` cria um identificador único imutável para a apresentação ativa.
-  - **Persistência Visual no Card do Palco:** Imediatamente após a submissão do voto, o botão de avaliar transiciona para o badge verde de confirmação:
-    - `<Check className="w-4 h-4 text-status-success" />`
-    - Texto: *"Avaliação enviada! Sua nota: {X} ★"*.
-  - **Bloqueio ao Reabrir o Modal:** Caso o modal seja reaberto, é exibida a tela informativa de auditoria:
-    - Ícone de confirmação verde (`CheckCircle2`).
-    - Badge: *"Voto Registrado"*.
-    - Título: *"Você já avaliou este show!"*.
-    - Explicação clara: *"Cada participante pode enviar somente 1 avaliação por música. Seu voto já foi somado ao Ranking da Festa! Sua nota para {Cantor}: {X} ★"*.
-  - **Bloqueio no Backend / Realtime (`roomRealtimeService.ts`):**
-    - O set `votedPerformances` memoriza as chaves já votadas da sessão e persiste no `localStorage` (`karaoke_voted_performances_${roomCode}`).
-    - Chamadas subsequentes a `submitRating` com a mesma chave retornam `{ success: false, message: 'Você já avaliou esta apresentação!' }`, impedindo que um mesmo participante inflacione repetidamente o ranking da festa.
+  - RPC `rpc_leave_and_cleanup_room`: disparada no evento `beforeunload` do navegador com `fetch(..., { keepalive: true })` e no método `disconnect()`.
+  - Quando a contagem de participantes ativos na sala zera (`remaining_participants = 0`), a sala é automaticamente excluída de `public.rooms`.
+  - A exclusão em cascata (`ON DELETE CASCADE`) remove instantaneamente todos os registros órfãos das tabelas filhas no PostgreSQL.
+  - RPC auxiliar `rpc_cleanup_empty_rooms()`: varredura no banco para expirar participantes inativos (>10 min) e excluir salas abandonadas (>2 min).
 - **Status:** **APROVADO** ✅
 
 ---
 
-## 3. Validação do Ciclo 07 — `TASK-QA-07` (Commit `23b4711`)
-
-### 3.1 Player Telão TV Edge-to-Edge (`/tv/:code`)
-- **Cenário de Teste:** Execução de vídeo no Telão TV (`TvModePage.tsx`).
+### 2.3 Encerramento Deliberado pelo Organizador
+- **Cenário de Teste:** O organizador clica no botão *"Encerrar e Excluir Sala"* no painel.
 - **Evidências Coletadas:**
-  - O player de vídeo (YouTube embed / Karaokê Bridge) agora ocupa 100% da viewport (`w-full h-full object-cover`), eliminando barras pretas e restrições verticais legadas de 78vh ou 82vh.
-  - Dimensões inspecionadas no portal: `clientWidth: 740`, `clientHeight: 496` ocupando exatamente 100% do elemento pai (`parentClientWidth: 740`, `parentClientHeight: 496`).
-  - Controles de apoio (Sair do Modo TV e atalho para o YouTube oficial em tela cheia) tornaram-se botões discretos e flutuantes com fundo translúcido no canto superior esquerdo (`bg-dark-base/85 backdrop-blur-md`).
-  - A faixa central da tela fica 100% limpa, garantindo legibilidade perfeita para as legendas da cantoria.
+  - Modal nativo de confirmação previne cliques acidentais.
+  - Execução de `closeAndDeleteRoom()` com broadcast do evento `room_closed` e chamada da RPC `rpc_delete_room(p_room_id)`.
+  - O Modo TV (`TvModePage`) e os clientes de participantes (`RoomParticipantPage`) interceptam o broadcast `room_closed` e eventos de deleção via `onRoomDeleted`, exibem toast informativo e navegam automaticamente para a página inicial `/`.
 - **Status:** **APROVADO** ✅
 
 ---
 
-### 3.2 HUD Vertical Sobreposto à Direita (`TvModePage.tsx`)
-- **Cenário de Teste:** Inspecionamento visual e reatividade dos componentes de sobreposição no telão.
-- **Evidências Coletadas:**
-  - Posicionamento lateral exclusivo à direita (`aside` com `absolute right-3 md:right-5 top-3 md:top-5 bottom-3 md:bottom-5 w-72 md:w-80 flex flex-col justify-between z-20 pointer-events-none gap-2.5`).
-  - **1. Bloco Superior (Entrada na Sala):** Card translúcido com QR Code compacto nítido sobre fundo branco (`bg-white p-2 rounded-xl`), código da sala em destaque (`CÓDIGO: FESTA48` ou `FESTA1`) e instrução clara *"Aponte a câmera"*.
-  - **2. Bloco Central (No Palco Agora & Nota Atual):**
-    - Identificação em tempo real do cantor e avatar (ex.: `🎤 🎸 Paulinho QA`), tag `Ao Vivo` e título da música (`🎵 Evidências (Karaokê)`).
-    - Bloco de **NOTA ATUAL:** integrado em tempo real ao sistema de pontuação (ex.: `4.9 ★ (2 votos)` acompanhado de medalha de pódio `🥇`, ou badge de boas-vindas `✨ Estreia no Palco` na ausência de notas anteriores).
-  - **3. Bloco Inferior (⏭ A Seguir):** Posição na fila (`#2 na Fila`), cantor subsequente, título da música e miniatura oficial do YouTube (`w-14 h-10 object-cover`).
-  - **Reações Flutuantes (Emojis):** Realocadas para a esquerda do HUD (`right-80 md:right-88`), subindo verticalmente sem sobrepor os cards de informação nem a legenda central.
-- **Status:** **APROVADO** ✅
-
----
-
-### 3.3 Entrada na Sala sem Limite Rígido de 6 Dígitos (`HomePage.tsx`)
-- **Cenário de Teste:** Inserção manual de códigos de sala na página inicial (`HomePage.tsx`).
-- **Evidências Coletadas:**
-  - O campo de código de sala agora possui `maxLength={24}` (anteriormente restrito a 6 caracteres).
-  - Testado e validado o preenchimento de nomes descritivos longos (ex.: `KARAOKE-ANIVERSARIO-2026` com 23 caracteres).
-  - Label atualizado de forma concisa para `CÓDIGO DA SALA`.
-- **Status:** **APROVADO** ✅
-
----
-
-## 4. Matriz Consolidada de Homologação
+## 3. Matriz Consolidada de Homologação
 
 | Recurso / Componente | Participante | Organizador | Modo TV | Status |
 | :--- | :---: | :---: | :---: | :---: |
+| **Persistência 100% Supabase PostgreSQL** | **Sim** | **Sim** | **Sim** | **Aprovado** ✅ |
+| **Auto-Cleanup da Sala (0 participantes)** | **Sim (RPC)** | **Sim (RPC)** | **Sim (RPC)** | **Aprovado** ✅ |
+| **Botão 'Encerrar e Excluir Sala' (Cascade)** | N/A | **Sim (Painel)** | Reativo (`room_closed`) | **Aprovado** ✅ |
+| **Código de Sala até 32 chars (VARCHAR(32))**| **Sim** | **Sim** | **Sim** | **Aprovado** ✅ |
 | **Bloqueio de Auto-Avaliação do Cantor** | **Sim (UI + Service)** | N/A | Sincronizado | **Aprovado** ✅ |
 | **Voto Único por Música por Participante** | **Sim (UI + Ledger)** | N/A | Sincronizado | **Aprovado** ✅ |
 | **Player TV Edge-to-Edge (100% Tela)** | N/A | N/A | **Sim (100%)** | **Aprovado** ✅ |
@@ -107,37 +71,10 @@
 | **QR Code Compacto Fundo Branco** | N/A | N/A | **Sim** | **Aprovado** ✅ |
 | **Exibição de Nota Atual / Estreia** | N/A | Sincronizado | **Sim** | **Aprovado** ✅ |
 | **Próximo Cantor c/ Thumbnail no HUD** | Sincronizado | Sincronizado | **Sim** | **Aprovado** ✅ |
-| **Entrada de Sala Longa (Até 24 chars)** | **Sim** | **Sim** | **Sim** | **Aprovado** ✅ |
 
 ---
 
-## 5. Validação do Ciclo 09 — `TASK-QA-09` (Persistência 100% Supabase & Auto-Cleanup)
-
-### 5.1 Eliminação de Dependência de `localStorage` para a Sala
-- **Cenário de Teste:** Criação de salas, sincronização de participantes, fila e rankings exclusivamente via banco de dados Supabase (PostgreSQL) e Realtime.
-- **Evidências Coletadas:**
-  - `rooms.code`: ampliado de `VARCHAR(6)` para `VARCHAR(32)` com constraint atualizada (`check_room_code_len`), suportando códigos de qualquer formato (ex: `FESTA48`, `KARAOKE-2026`).
-  - RPC `rpc_join_room`: cria a sala atomicamente no banco se não existir, registra o participante em `public.participants` e retorna dados íntegros de sessão.
-  - As tabelas filhas (`participants`, `queue_items`, `ratings`, `performances`) mantêm integridade relacional com `room_id REFERENCES public.rooms(id) ON DELETE CASCADE`.
-
-### 5.2 Auto-Cleanup de Salas Vazias (0 Participantes Ativos)
-- **Cenário de Teste:** Desconexão de todos os participantes ou encerramento pelo organizador.
-- **Evidências Coletadas:**
-  - RPC `rpc_leave_and_cleanup_room`: disparada no evento `beforeunload` do navegador com `fetch(..., { keepalive: true })` e no método `disconnect()`.
-  - Quando a contagem de participantes ativos na sala zera (`remaining_participants = 0`), a sala é automaticamente excluída de `public.rooms`.
-  - A exclusão em cascata (`ON DELETE CASCADE`) remove instantaneamente todos os registros órfãos das tabelas filhas no PostgreSQL.
-  - RPC auxiliar `rpc_cleanup_empty_rooms()`: varredura no banco para expirar participantes inativos (>10 min) e excluir salas abandonadas (>2 min).
-
-### 5.3 Encerramento Deliberado pelo Organizador
-- **Cenário de Teste:** O organizador clica no botão *"Encerrar e Excluir Sala"* no painel.
-- **Evidências Coletadas:**
-  - Modal nativo de confirmação previne cliques acidentais.
-  - Execução de `closeAndDeleteRoom()` com broadcast do evento `room_closed` e chamada da RPC `rpc_delete_room(p_room_id)`.
-  - O Modo TV (`TvModePage`) e os clientes de participantes (`RoomParticipantPage`) interceptam o broadcast `room_closed` e eventos de deleção via `onRoomDeleted`, exibem toast informativo e navegam automaticamente para a página inicial `/`.
-
----
-
-## 6. Veredito Geral de Engenharia de Qualidade
+## 4. Veredito Geral de Engenharia de Qualidade
 
 > **STATUS:** **HOMOLOGADO E APROVADO COM 100% DE CONFORMIDADE** 🚀🏆✨  
 > Todas as salas e filas agora operam de forma 100% centralizada e atômica no Supabase PostgreSQL. Salas abandonadas ou com 0 participantes ativos são excluídas automaticamente do banco, mantendo o banco de dados limpo, seguro e performático.
