@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { REACTION_EMOJIS, ReactionEmoji } from '../types/karaoke';
 import { SupabaseStatusBadge } from '../components/SupabaseStatusBadge';
+import { extractYouTubeVideoId, getYouTubeThumbnail } from '../lib/youtube';
 
 interface FloatingReactionInstance {
   id: number;
@@ -54,9 +55,34 @@ export const RoomParticipantPage: React.FC = () => {
     duet?: string;
     duration: string;
   } | null>(null);
-  const [mySongs] = useState<Array<{ id: string; title: string; artist: string; position: number }>>([]);
-  const [upcomingQueue] = useState<Array<{ pos: string; title: string; artist: string; singer: string; duration: string }>>([]);
+  const [mySongs, setMySongs] = useState<Array<{ id: string; title: string; artist: string; position: number; videoId?: string }>>([]);
+  const [upcomingQueue, setUpcomingQueue] = useState<Array<{ pos: string; title: string; artist: string; singer: string; duration: string; videoId?: string }>>([]);
   const [rankings] = useState<Array<{ pos: number; name: string; stars: string; points: number }>>([]);
+
+  const handleAddSongToQueue = (title: string, artist: string, videoId: string) => {
+    const newPosition = upcomingQueue.length + 1;
+    const singerName = isDuet && selectedDuetPartner ? `${nickname} & ${selectedDuetPartner}` : nickname;
+    const newMySong = {
+      id: String(Date.now()),
+      title,
+      artist,
+      position: newPosition,
+      videoId,
+    };
+    const newQueueItem = {
+      pos: `#${newPosition}`,
+      title,
+      artist,
+      singer: singerName,
+      duration: '04:00',
+      videoId,
+    };
+    setMySongs((prev) => [...prev, newMySong]);
+    setUpcomingQueue((prev) => [...prev, newQueueItem]);
+    setSearchQuery('');
+    alert(`"${title}" foi adicionada à fila com sucesso! 🎤✨`);
+    setActiveTab('stage');
+  };
 
   const sendReaction = (emoji: ReactionEmoji) => {
     const id = Date.now() + Math.random();
@@ -317,11 +343,44 @@ export const RoomParticipantPage: React.FC = () => {
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Busque música ou artista de karaokê..."
+                placeholder="Busque por nome ou cole o link do YouTube..."
                 className="w-full rounded-xl border border-dark-border bg-dark-surface px-4 py-3 pl-10 text-sm text-text-primary placeholder:text-text-muted focus:border-brand-purple focus:outline-none focus:ring-2 focus:ring-brand-purple/30"
               />
               <Search className="w-4 h-4 text-text-muted absolute left-3.5 top-3.5" />
             </div>
+
+            {/* CARD SE LINK DO YOUTUBE FOR DETECTADO */}
+            {(() => {
+              const detectedVideoId = extractYouTubeVideoId(searchQuery);
+              if (!detectedVideoId) return null;
+              return (
+                <div className="p-4 rounded-2xl border-2 border-brand-purple/60 bg-gradient-to-b from-dark-surface to-dark-elevated shadow-neon-purple space-y-3">
+                  <div className="flex items-center gap-2 text-xs font-bold text-brand-purple-light uppercase">
+                    <Sparkles className="w-4 h-4" /> Link do YouTube Reconhecido!
+                  </div>
+                  <div className="flex gap-3 items-center">
+                    <img
+                      src={getYouTubeThumbnail(detectedVideoId)}
+                      alt="Thumbnail do Vídeo"
+                      className="w-24 h-16 rounded-lg object-cover border border-brand-purple/40"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold text-white truncate">Música por Link do YouTube</p>
+                      <p className="text-xs text-brand-cyan-light font-mono truncate">ID: {detectedVideoId}</p>
+                      <p className="text-[11px] text-text-muted mt-0.5 truncate">
+                        Cantor: {isDuet && selectedDuetPartner ? `${nickname} & ${selectedDuetPartner}` : nickname}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleAddSongToQueue('Música do YouTube', 'Karaokê', detectedVideoId)}
+                    className="w-full py-2.5 rounded-xl bg-gradient-to-r from-brand-purple to-brand-pink text-white text-xs font-bold shadow-neon-purple flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98] transition-all"
+                  >
+                    <Plus className="w-4 h-4" /> Colocar Este Vídeo na Fila
+                  </button>
+                </div>
+              );
+            })()}
 
             {/* Toggle Dueto */}
             <div className="p-3.5 rounded-xl border border-dark-border bg-dark-surface space-y-3">
@@ -398,10 +457,7 @@ export const RoomParticipantPage: React.FC = () => {
                     </p>
                   </div>
                   <button
-                    onClick={() => {
-                      alert(`"${song.title}" adicionada à fila com sucesso! 🎤✨`);
-                      setActiveTab('stage');
-                    }}
+                    onClick={() => handleAddSongToQueue(song.title, song.channel, song.id)}
                     className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-brand-purple to-brand-pink text-white text-xs font-bold flex items-center gap-1 shadow-neon-purple/40 hover:scale-105 active:scale-95 transition-all"
                   >
                     <Plus className="w-3.5 h-3.5" /> Adicionar

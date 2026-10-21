@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { Sparkles, Mic, Flame, QrCode, ArrowLeft, Disc3 } from 'lucide-react';
+import { Sparkles, Mic, Flame, QrCode, ArrowLeft, Disc3, ExternalLink } from 'lucide-react';
 import { SupabaseStatusBadge } from '../components/SupabaseStatusBadge';
+import { YOUTUBE_PREMIUM_LOGIN_URL } from '../lib/youtube';
 
 interface FloatingReaction {
   id: number;
@@ -71,8 +72,20 @@ export const TvModePage: React.FC = () => {
           </span>
         </div>
 
-        {/* Right Section: Status Badge + Mini QR Code info */}
+        {/* Right Section: YouTube Premium + Status Badge + Mini QR Code info */}
         <div className="flex items-center gap-3">
+          <a
+            href={YOUTUBE_PREMIUM_LOGIN_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-brand-gold/40 bg-brand-gold/10 text-brand-gold hover:bg-brand-gold/20 transition-all text-xs font-bold"
+            title="Conecte sua conta do YouTube Premium para que o Telão toque sem anúncios comerciais"
+          >
+            <span>👑</span>
+            <span>YouTube Premium (Sem Anúncios)</span>
+            <ExternalLink className="w-3 h-3 opacity-70" />
+          </a>
+
           <SupabaseStatusBadge compact />
 
           <div className="flex items-center gap-2.5 bg-dark-surface/80 border border-dark-border px-3 py-1.5 rounded-2xl">
@@ -128,13 +141,16 @@ export const TvModePage: React.FC = () => {
             </button>
           </div>
         ) : currentSong ? (
-          /* PLAYER 16:9 QUANDO HOUVER MÚSICA */
+          /* PLAYER 16:9 QUANDO HOUVER MÚSICA (Modo com suporte a YouTube Premium / Cookies) */
           <div className="relative w-full max-w-5xl aspect-video rounded-3xl border-2 border-brand-purple/40 bg-black/90 overflow-hidden shadow-neon-purple flex items-center justify-center">
             <iframe
-              className="w-full h-full pointer-events-none"
-              src={`https://www.youtube-nocookie.com/embed/${currentSong.youtubeVideoId}?autoplay=1&controls=0&rel=0`}
+              className="w-full h-full"
+              src={`https://www.youtube.com/embed/${currentSong.youtubeVideoId}?autoplay=1&controls=1&rel=0&enablejsapi=1&origin=${encodeURIComponent(
+                typeof window !== 'undefined' ? window.location.origin : ''
+              )}`}
               title="YouTube Player"
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              allowFullScreen
             />
 
             {/* Overlay com Emojis Flutuantes */}
