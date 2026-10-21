@@ -17,6 +17,7 @@ import {
   Loader2,
   Key,
   Check,
+  Clock,
 } from 'lucide-react';
 import { REACTION_EMOJIS, ReactionEmoji } from '../types/karaoke';
 import { SupabaseStatusBadge } from '../components/SupabaseStatusBadge';
@@ -56,6 +57,12 @@ export const RoomParticipantPage: React.FC = () => {
   // Votação interativa
   const [showVotingModal, setShowVotingModal] = useState(false);
   const [selectedRating, setSelectedRating] = useState<number | null>(null);
+  const [countdownState, setCountdownState] = useState<{
+    active: boolean;
+    secondsRemaining: number;
+    songTitle: string;
+    singerName: string;
+  } | null>(null);
 
   // Sincronização em Tempo Real (Supabase Realtime)
   const [connectedParticipants, setConnectedParticipants] = useState<Array<{ id: string; name: string; isOrganizer?: boolean; joined?: string }>>([]);
@@ -133,6 +140,15 @@ export const RoomParticipantPage: React.FC = () => {
         },
         onVotingChange: (isOpen) => {
           setShowVotingModal(isOpen);
+        },
+        onVotingCountdown: (countdown) => {
+          if (countdown.active) {
+            setCountdownState(countdown);
+            setShowVotingModal(true);
+          } else {
+            setCountdownState(null);
+            setShowVotingModal(false);
+          }
         },
         onReaction: (reaction) => {
           setReactions((prev) => [
@@ -963,9 +979,32 @@ export const RoomParticipantPage: React.FC = () => {
               </p>
             )}
 
+            {/* Barra e Contador de Contagem Regressiva (10s) */}
+            {countdownState?.active && (
+              <div className="w-full space-y-1.5 p-3 rounded-xl bg-dark-base/80 border border-brand-gold/40 shadow-inner">
+                <div className="flex justify-between items-center text-xs font-bold text-brand-gold">
+                  <span className="flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5 animate-spin" /> Tempo para avaliar:
+                  </span>
+                  <span className="font-mono text-sm px-2 py-0.5 rounded bg-brand-gold/20 text-brand-gold border border-brand-gold/50 shadow-neon-gold">
+                    {countdownState.secondsRemaining}s
+                  </span>
+                </div>
+                <div className="w-full h-2.5 bg-dark-base rounded-full overflow-hidden border border-brand-gold/30">
+                  <div
+                    className="h-full bg-gradient-to-r from-brand-purple via-brand-pink to-brand-gold transition-all duration-1000 ease-linear shadow-neon-gold"
+                    style={{ width: `${Math.max(0, Math.min(100, (countdownState.secondsRemaining / 10) * 100))}%` }}
+                  />
+                </div>
+              </div>
+            )}
+
             <button
               disabled={!selectedRating}
-              onClick={() => {
+              onClick={async () => {
+                if (selectedRating && serviceRef.current) {
+                  await serviceRef.current.submitRating(selectedRating);
+                }
                 showToast(`Voto de ${selectedRating} estrelas enviado! 🌟`);
                 setShowVotingModal(false);
                 setSelectedRating(null);

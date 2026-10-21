@@ -58,6 +58,12 @@ export const OrganizerPage: React.FC = () => {
   // MVP Limpo & Realtime: Fila e Participantes sincronizados via Supabase Realtime
   const [queue, setQueue] = useState<QueueItemLocal[]>([]);
   const [participants, setParticipants] = useState<ParticipantLocal[]>([]);
+  const [countdownState, setCountdownState] = useState<{
+    active: boolean;
+    secondsRemaining: number;
+    songTitle: string;
+    singerName: string;
+  } | null>(null);
   const serviceRef = useRef<RoomRealtimeService | null>(null);
 
   // Inicialização do Supabase Realtime para a sala
@@ -87,6 +93,17 @@ export const OrganizerPage: React.FC = () => {
         },
         onVotingChange: (isOpen) => {
           setVotingOpen(isOpen);
+        },
+        onVotingCountdown: (countdown) => {
+          if (countdown.active) {
+            setCountdownState(countdown);
+          } else {
+            setCountdownState(null);
+          }
+        },
+        onPlaybackCommand: (command) => {
+          if (command.action === 'play') setIsPlaying(true);
+          if (command.action === 'pause') setIsPlaying(false);
         },
       }
     );
@@ -327,7 +344,11 @@ export const OrganizerPage: React.FC = () => {
             <div className="grid grid-cols-3 gap-2">
               <button
                 disabled={!currentSong}
-                onClick={() => showToast('Música reiniciada!')}
+                onClick={() => {
+                  serviceRef.current?.sendPlaybackCommand('restart');
+                  setIsPlaying(true);
+                  showToast('Música reiniciada no Telão!');
+                }}
                 className="flex items-center justify-center gap-1.5 py-2.5 rounded-xl border border-dark-border bg-dark-elevated hover:bg-dark-border text-xs font-semibold transition-all disabled:opacity-40"
               >
                 <RotateCcw className="w-4 h-4" /> Reiniciar
@@ -335,7 +356,12 @@ export const OrganizerPage: React.FC = () => {
 
               <button
                 disabled={!currentSong}
-                onClick={() => setIsPlaying(!isPlaying)}
+                onClick={() => {
+                  const nextAction = isPlaying ? 'pause' : 'play';
+                  setIsPlaying(!isPlaying);
+                  serviceRef.current?.sendPlaybackCommand(nextAction);
+                  showToast(isPlaying ? 'Música pausada no Telão!' : 'Música reproduzindo no Telão!');
+                }}
                 className="flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-gradient-to-r from-brand-purple to-brand-pink text-white text-xs font-bold shadow-neon-purple transition-all disabled:opacity-40"
               >
                 {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
@@ -344,19 +370,52 @@ export const OrganizerPage: React.FC = () => {
 
               <button
                 disabled={!currentSong}
-                onClick={() => {
-                  if (queue.length > 0) {
-                    const nextQueue = queue.slice(1);
-                    setQueue(nextQueue);
-                    serviceRef.current?.updateQueue(nextQueue);
-                    serviceRef.current?.setCurrentSong(nextQueue[0] || null);
-                  }
+                onClick={async () => {
+                  await serviceRef.current?.advanceToNextSong();
+                  showToast('Música pulada! Próxima atração no palco.');
                 }}
                 className="flex items-center justify-center gap-1.5 py-2.5 rounded-xl border border-status-danger/40 bg-status-danger/10 text-status-danger hover:bg-status-danger/20 text-xs font-semibold transition-all disabled:opacity-40"
               >
                 <SkipForward className="w-4 h-4" /> Pular
               </button>
             </div>
+
+            {/* Banner de Contagem Regressiva de Avaliação (10 segundos) */}
+            {countdownState?.active && (
+              <div className="p-3.5 rounded-xl border border-brand-gold/60 bg-brand-gold/15 space-y-2.5 shadow-neon-gold/20 animate-fade-in">
+                <div className="flex items-center justify-between text-xs font-bold text-brand-gold">
+                  <span className="flex items-center gap-1.5">
+                    <Star className="w-4 h-4 fill-brand-gold" /> Avaliação em Andamento
+                  </span>
+                  <span className="font-mono text-sm px-2 py-0.5 rounded-md bg-dark-surface border border-brand-gold/40">
+                    {countdownState.secondsRemaining}s
+                  </span>
+                </div>
+                <div className="w-full h-2.5 bg-dark-base rounded-full overflow-hidden border border-brand-gold/30">
+                  <div
+                    className="h-full bg-gradient-to-r from-brand-purple via-brand-pink to-brand-gold transition-all duration-1000 ease-linear shadow-neon-gold"
+                    style={{ width: `${(countdownState.secondsRemaining / 10) * 100}%` }}
+                  />
+                </div>
+                <button
+                  onClick={async () => {
+                    setCountdownState(null);
+                    serviceRef.current?.sendVotingCountdown({
+                      active: false,
+                      secondsRemaining: 0,
+                      songTitle: '',
+                      singerName: '',
+                    });
+                    serviceRef.current?.toggleVoting(false);
+                    await serviceRef.current?.advanceToNextSong();
+                    showToast('Contagem encerrada! Próximo show iniciado.');
+                  }}
+                  className="w-full py-2 rounded-lg bg-brand-gold text-dark-base hover:bg-brand-gold/90 font-bold text-xs shadow-md transition-all"
+                >
+                  Pular Contagem e Iniciar Próxima Agora
+                </button>
+              </div>
+            )}
 
             {/* Seção de Votação */}
             <div className="pt-4 border-t border-dark-border/80 space-y-3">

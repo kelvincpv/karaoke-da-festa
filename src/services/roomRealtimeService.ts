@@ -33,6 +33,20 @@ export interface FloatingReactionSync {
   xOffset: number;
 }
 
+export interface PlaybackCommandPayload {
+  action: 'play' | 'pause' | 'restart' | 'skip';
+  timestamp: number;
+}
+
+export interface VotingCountdownPayload {
+  active: boolean;
+  secondsRemaining: number;
+  songTitle: string;
+  singerName: string;
+  nextSongTitle?: string;
+  nextSingerName?: string;
+}
+
 export interface RoomSyncCallbacks {
   onParticipantsChange?: (participants: RoomParticipantSync[]) => void;
   onQueueChange?: (queue: QueueItemSync[]) => void;
@@ -40,6 +54,8 @@ export interface RoomSyncCallbacks {
   onVotingChange?: (votingOpen: boolean) => void;
   onReaction?: (reaction: FloatingReactionSync) => void;
   onRatingSubmit?: (rating: { singer: string; score: number }) => void;
+  onPlaybackCommand?: (command: PlaybackCommandPayload) => void;
+  onVotingCountdown?: (countdown: VotingCountdownPayload) => void;
 }
 
 export class RoomRealtimeService {
@@ -164,6 +180,24 @@ export class RoomRealtimeService {
       .on('broadcast', { event: 'voting_toggle' }, ({ payload }) => {
         this.votingOpen = Boolean(payload?.votingOpen);
         this.callbacks.onVotingChange?.(this.votingOpen);
+      })
+      .on('broadcast', { event: 'playback_command' }, ({ payload }) => {
+        if (payload?.action && this.callbacks.onPlaybackCommand) {
+          this.callbacks.onPlaybackCommand(payload);
+        }
+      })
+      .on('broadcast', { event: 'voting_countdown' }, ({ payload }) => {
+        if (payload && this.callbacks.onVotingCountdown) {
+          this.callbacks.onVotingCountdown(payload);
+        }
+      })
+      .on('broadcast', { event: 'rating_submit' }, ({ payload }) => {
+        if (payload && this.callbacks.onRatingSubmit) {
+          this.callbacks.onRatingSubmit({
+            singer: payload.singer,
+            score: payload.stars || payload.score,
+          });
+        }
       })
       .on('broadcast', { event: 'reaction' }, ({ payload }) => {
         if (payload?.emoji && this.callbacks.onReaction) {
@@ -513,6 +547,135 @@ export class RoomRealtimeService {
     if (isSupabaseConfigured && this.roomId) {
       await supabase.from('rooms').update({ voting_open: open }).eq('id', this.roomId);
     }
+  }
+
+  /**
+   * Envia comando de controle de reprodução (Play, Pause, Reiniciar, Pular) para todos os Telões TV
+   */
+  public sendPlaybackCommand(action: 'play' | 'pause' | 'restart' | 'skip'): void {
+    this.channel?.send({
+      type: 'broadcast',
+      event: 'playback_command',
+      payload: { action, timestamp: Date.now() },
+    });
+  }
+
+  /**
+   * Envia status da contagem regressiva de avaliação para Telão, Organizador e Participantes
+   */
+  public sendVotingCountdown(payload: VotingCountdownPayload): void {
+    this.channel?.send({
+      type: 'broadcast',
+      event: 'voting_countdown',
+      payload,
+    });
+    this.callbacks.onVotingCountdown?.(payload);
+  }
+
+  /**
+   * Envia uma avaliação de performance (1 a 5 estrelas)
+   */
+  public async submitRating(stars: number): Promise<{ success: boolean; message?: string }> {
+    const singer = this.currentSong?.singer || 'Cantor';
+
+    // Broadcast imediato para animação nos outros dispositivos
+    this.channel?.send({
+      type: 'broadcast',
+      event: 'rating_submit',
+      payload: { singer, stars, participant: this.currentUser.name },
+    });
+    this.callbacks.onRatingSubmit?.({ singer, score: stars });
+
+    if (isSupabaseConfigured && this.roomId && this.currentSong?.id) {
+      try {
+        const participantId =
+          this.participantDbId ||
+          localStorage.getItem(`karaoke_participant_db_id_${this.roomCode}`);
+        if (participantId) {
+          // Tentar RPC oficial primeiro
+          const { error: rpcErr } = await supabase.rpc('rpc_submit_rating', {
+            p_room_id: this.roomId,
+            p_queue_item_id: this.currentSong.id,
+            p_voter_participant_id: participantId,
+            p_stars: stars,
+          });
+
+          if (!rpcErr) return { success: true };
+
+          // Fallback para inserção direta se RPC falhar
+          const { error: insertErr } = await supabase.from('ratings').insert({
+            room_id: this.roomId,
+            queue_item_id: this.currentSong.id,
+            voter_participant_id: participantId,
+            stars,
+          });
+
+          if (!insertErr) return { success: true };
+          return { success: false, message: insertErr.message };
+        }
+      } catch (err: any) {
+        console.warn('[Realtime] Erro ao salvar nota:', err);
+        return { success: false, message: err?.message };
+      }
+    }
+
+    return { success: true };
+  }
+
+  /**
+   * Avança atomicamente para a próxima música da fila
+   */
+  public async advanceToNextSong(): Promise<QueueItemSync | null> {
+    if (this.currentQueue.length === 0) {
+      this.setCurrentSong(null);
+      return null;
+    }
+
+    const finishedSong = this.currentQueue[0];
+    const nextQueue = this.currentQueue.slice(1);
+    this.currentQueue = nextQueue;
+    const nextSong = nextQueue[0] || null;
+    this.currentSong = nextSong;
+
+    // Transmite via broadcast para latência zero em todos os dispositivos
+    this.channel?.send({
+      type: 'broadcast',
+      event: 'queue_update',
+      payload: { queue: nextQueue },
+    });
+
+    this.channel?.send({
+      type: 'broadcast',
+      event: 'stage_change',
+      payload: { currentSong: nextSong },
+    });
+
+    this.callbacks.onQueueChange?.(nextQueue);
+    this.callbacks.onCurrentSongChange?.(nextSong);
+    localStorage.setItem(`karaoke_queue_${this.roomCode}`, JSON.stringify(nextQueue));
+
+    // Atualiza persistência no PostgreSQL
+    if (isSupabaseConfigured && this.roomId) {
+      try {
+        if (finishedSong?.id) {
+          await supabase
+            .from('queue_items')
+            .update({ status: 'completed' })
+            .eq('id', finishedSong.id);
+        }
+        await supabase
+          .from('rooms')
+          .update({
+            current_queue_id: nextSong ? nextSong.id : null,
+            voting_open: false,
+          })
+          .eq('id', this.roomId);
+      } catch (err) {
+        console.warn('[Realtime] Erro ao avançar música no banco:', err);
+      }
+    }
+
+    return nextSong;
   }
 
   /**
