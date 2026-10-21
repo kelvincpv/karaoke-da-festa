@@ -1,0 +1,47 @@
+name: Supabase Keep-Alive Ping
+
+on:
+  schedule:
+    # Executa a cada 2 dias às 12:00 UTC (09:00 Horário de Brasília)
+    - cron: '0 12 */2 * *'
+  workflow_dispatch: # Permite disparo manual a qualquer momento pelo GitHub
+
+jobs:
+  keep-alive:
+    name: Ping & Update Supabase
+    runs-on: ubuntu-latest
+    steps:
+      - name: Executar Heartbeat no Supabase
+        run: |
+          SUPABASE_URL="${{ secrets.SUPABASE_URL || secrets.VITE_SUPABASE_URL }}"
+          SUPABASE_KEY="${{ secrets.SUPABASE_ANON_KEY || secrets.VITE_SUPABASE_ANON_KEY }}"
+
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_KEY" ]; then
+            echo "::error::SUPABASE_URL ou SUPABASE_ANON_KEY não configurados nos Secrets do repositório!"
+            echo "Configure em: GitHub Repo -> Settings -> Secrets and variables -> Actions"
+            exit 1
+          fi
+
+          # Normalizar URL sem barra final
+          SUPABASE_URL="${SUPABASE_URL%/}"
+
+          echo "Disparando RPC rpc_heartbeat em: ${SUPABASE_URL}/rest/v1/rpc/rpc_heartbeat"
+
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "${SUPABASE_URL}/rest/v1/rpc/rpc_heartbeat" \
+            -H "apikey: ${SUPABASE_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_KEY}" \
+            -H "Content-Type: application/json" \
+            -d '{}')
+
+          HTTP_BODY=$(echo "$RESPONSE" | sed '$d')
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n 1)
+
+          echo "HTTP Status Code: ${HTTP_CODE}"
+          echo "Corpo da resposta: ${HTTP_BODY}"
+
+          if [ "${HTTP_CODE}" -ge 200 ] && [ "${HTTP_CODE}" -lt 300 ]; then
+            echo "Sucesso! O banco Supabase registrou a atividade e permanecerá ativo."
+          else
+            echo "::error::Falha ao comunicar com o Supabase. Status: ${HTTP_CODE}"
+            exit 1
+          fi
