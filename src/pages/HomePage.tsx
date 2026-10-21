@@ -81,15 +81,15 @@ export const HomePage: React.FC = () => {
           <form onSubmit={handleJoin} className="flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
               <label className="text-xs font-semibold uppercase tracking-wider text-text-secondary">
-                Código da Sala (6 Dígitos)
+                Código da Sala
               </label>
               <input
                 type="text"
-                maxLength={6}
+                maxLength={24}
                 value={roomCode}
                 onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
-                placeholder="FESTA1"
-                className="w-full text-center tracking-[0.35em] uppercase font-display font-black text-2xl md:text-3xl rounded-xl border border-brand-purple/40 bg-dark-base/90 py-3 text-brand-purple-light placeholder:text-text-muted/40 focus:border-brand-pink focus:shadow-neon-purple focus:outline-none transition-all"
+                placeholder="FESTA48"
+                className="w-full text-center tracking-[0.2em] uppercase font-display font-black text-2xl md:text-3xl rounded-xl border border-brand-purple/40 bg-dark-base/90 py-3 text-brand-purple-light placeholder:text-text-muted/40 focus:border-brand-pink focus:shadow-neon-purple focus:outline-none transition-all"
                 required
               />
             </div>
