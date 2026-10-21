@@ -1,8 +1,8 @@
 # Relatório Oficial de Garantia da Qualidade (QA) — Karaokê da Festa 🎤✨
 
 **Responsável:** Engenheiro de Qualidade Sênior (Q.A Sênior)  
-**Ambiente Testado:** Produção / Portal Web (`https://karaoke.kelvinmoreira.com.br`) & Branch `main` (`23b4711`)  
-**Data da Execução:** 21/10/2026 18:56 (BRT)  
+**Ambiente Testado:** Produção / Portal Web (`https://karaoke.kelvinmoreira.com.br`) & Branch `main` (`243b2ad`)  
+**Data da Execução:** 21/10/2026 19:50 (BRT)  
 **Ferramentas Utilizadas:** Git CLI, TypeScript Compiler (`tsc`), Vite Build, Maestri Portal Automation  
 
 ---
@@ -22,32 +22,45 @@
 
 ---
 
-## 2. Validação do Ciclo 08 — `TASK-QA-08`
+## 2. Validação do Ciclo 08 — `TASK-QA-08` (Commit `243b2ad`)
 
-### 2.1 Bloqueio de Auto-Avaliação para Quem Está Cantando
-- **Cenário de Teste:** O participante cujo apelido coincide com o cantor(a) ou parceiro de dueto da música ativa acessa a sala e a janela de avaliação abre.
+### 2.1 Bloqueio de Auto-Avaliação para Quem Está Cantando (e Dueto)
+- **Cenário de Teste:** O participante cujo apelido coincide com o cantor(a) ou parceiro de dueto da música ativa no palco acessa a sala e tenta avaliar a performance.
 - **Evidências Coletadas:**
-  - **No Card do Palco (`RoomParticipantPage.tsx`):** O botão *"Avaliar Cantoria ⭐"* é automaticamente substituído por um badge indicativo: *"Você está no palco agora! 🎤 Dê um show!"*.
-  - **No Modal de Votação (Abertura pós-show ou contagem de 10s):** O participante que está cantando não recebe estrelas interativas nem botão de confirmação. Em seu lugar, é renderizado o estado comemorativo *"Você no Palco! Show de {Cantor}! Você não pode avaliar a sua própria apresentação. Relaxe e aguarde as notas da galera no Telão! ✨"*, com a barra de contagem dos votos dos outros convidados.
-  - **No Backend / Serviço (`roomRealtimeService.ts`):** Validação estrita em `submitRating` com a função `isSelfSinger`, rejeitando qualquer tentativa com a mensagem: *"Você está no palco e não pode avaliar a sua própria apresentação!"*.
+  - **No Card do Palco (`RoomParticipantPage.tsx`):** O botão *"Avaliar Cantoria ⭐"* é automaticamente suprimido e substituído pelo badge comemorativo:
+    - Ícone de microfone pulsante (`<Mic className="animate-pulse" />`).
+    - Texto: *"Você está no palco agora! 🎤 Dê um show!"*.
+  - **No Modal de Votação (Ciclo Pós-Show ou Abertura Manual):**
+    - A interface do participante que está cantando não renderiza os botões de 1 a 5 estrelas nem o botão de confirmação.
+    - É apresentada a tela de bloqueio comemorativa: *"Você no Palco! Show de {Cantor}! Você não pode avaliar a sua própria apresentação. Relaxe e aproveite os aplausos da galera! 🎤✨"*.
+    - Renderiza a barra de contagem dos votos dos outros convidados em tempo real (`A galera está votando: {X}s`).
+  - **No Serviço em Tempo Real (`roomRealtimeService.ts`):** Validação estrita via função `isSelfSinger(singer, duet, currentUser.name)`, rejeitando programmaticamente qualquer tentativa com `{ success: false, message: 'Você está no palco e não pode avaliar a sua própria apresentação!' }`.
 - **Status:** **APROVADO** ✅
 
 ---
 
 ### 2.2 Garantia de Voto Único por Participante por Música
-- **Cenário de Teste:** O participante envia sua nota de 1 a 5 estrelas e tenta votar novamente durante a mesma apresentação ou contagem regressiva.
+- **Cenário de Teste:** O participante envia sua nota de 1 a 5 estrelas e tenta votar novamente durante a mesma apresentação ou janela de votação.
 - **Evidências Coletadas:**
-  - **Após o Primeiro Voto:** A avaliação é registrada no ledger local (`karaoke_voted_performances_${roomCode}`) e enviada ao ranking em tempo real.
-  - **Persistência Visual no Card do Palco:** O botão de avaliar passa a exibir o status fixo: *"Avaliação enviada: Sua nota: {X} ★"* com ícone de verificação verde (`CheckCircle2`).
-  - **Proteção no Modal:** Se o participante abrir o modal novamente ou se a contagem regressiva estiver ativa, é apresentado o card informativo *"Você já avaliou este show! Cada participante pode enviar somente 1 avaliação por música"*, exibindo a nota que o usuário já havia atribuído.
-  - **Imutabilidade no Serviço (`roomRealtimeService.ts`):** `submitRating` consulta o set `votedPerformances` por chave única de apresentação (`getPerformanceKey`). Votos repetidos são bloqueados com a mensagem *"Você já avaliou esta apresentação!"*, impedindo qualquer inflação indevida de notas no Ranking.
+  - **Chave Determinística de Performance:** A função `getPerformanceKey(songId, singer, songTitle)` cria um identificador único imutável para a apresentação ativa.
+  - **Persistência Visual no Card do Palco:** Imediatamente após a submissão do voto, o botão de avaliar transiciona para o badge verde de confirmação:
+    - `<Check className="w-4 h-4 text-status-success" />`
+    - Texto: *"Avaliação enviada! Sua nota: {X} ★"*.
+  - **Bloqueio ao Reabrir o Modal:** Caso o modal seja reaberto, é exibida a tela informativa de auditoria:
+    - Ícone de confirmação verde (`CheckCircle2`).
+    - Badge: *"Voto Registrado"*.
+    - Título: *"Você já avaliou este show!"*.
+    - Explicação clara: *"Cada participante pode enviar somente 1 avaliação por música. Seu voto já foi somado ao Ranking da Festa! Sua nota para {Cantor}: {X} ★"*.
+  - **Bloqueio no Backend / Realtime (`roomRealtimeService.ts`):**
+    - O set `votedPerformances` memoriza as chaves já votadas da sessão e persiste no `localStorage` (`karaoke_voted_performances_${roomCode}`).
+    - Chamadas subsequentes a `submitRating` com a mesma chave retornam `{ success: false, message: 'Você já avaliou esta apresentação!' }`, impedindo que um mesmo participante inflacione repetidamente o ranking da festa.
 - **Status:** **APROVADO** ✅
 
 ---
 
 ## 3. Validação do Ciclo 07 — `TASK-QA-07` (Commit `23b4711`)
 
-### 2.1 Player Telão TV Edge-to-Edge (`/tv/:code`)
+### 3.1 Player Telão TV Edge-to-Edge (`/tv/:code`)
 - **Cenário de Teste:** Execução de vídeo no Telão TV (`TvModePage.tsx`).
 - **Evidências Coletadas:**
   - O player de vídeo (YouTube embed / Karaokê Bridge) agora ocupa 100% da viewport (`w-full h-full object-cover`), eliminando barras pretas e restrições verticais legadas de 78vh ou 82vh.
@@ -58,7 +71,7 @@
 
 ---
 
-### 2.2 HUD Vertical Sobreposto à Direita (`TvModePage.tsx`)
+### 3.2 HUD Vertical Sobreposto à Direita (`TvModePage.tsx`)
 - **Cenário de Teste:** Inspecionamento visual e reatividade dos componentes de sobreposição no telão.
 - **Evidências Coletadas:**
   - Posicionamento lateral exclusivo à direita (`aside` com `absolute right-3 md:right-5 top-3 md:top-5 bottom-3 md:bottom-5 w-72 md:w-80 flex flex-col justify-between z-20 pointer-events-none gap-2.5`).
@@ -72,7 +85,7 @@
 
 ---
 
-### 2.3 Entrada na Sala sem Limite Rígido de 6 Dígitos (`HomePage.tsx`)
+### 3.3 Entrada na Sala sem Limite Rígido de 6 Dígitos (`HomePage.tsx`)
 - **Cenário de Teste:** Inserção manual de códigos de sala na página inicial (`HomePage.tsx`).
 - **Evidências Coletadas:**
   - O campo de código de sala agora possui `maxLength={24}` (anteriormente restrito a 6 caracteres).
@@ -82,10 +95,12 @@
 
 ---
 
-## 3. Matriz Consolidada de Homologação
+## 4. Matriz Consolidada de Homologação
 
 | Recurso / Componente | Participante | Organizador | Modo TV | Status |
 | :--- | :---: | :---: | :---: | :---: |
+| **Bloqueio de Auto-Avaliação do Cantor** | **Sim (UI + Service)** | N/A | Sincronizado | **Aprovado** ✅ |
+| **Voto Único por Música por Participante** | **Sim (UI + Ledger)** | N/A | Sincronizado | **Aprovado** ✅ |
 | **Player TV Edge-to-Edge (100% Tela)** | N/A | N/A | **Sim (100%)** | **Aprovado** ✅ |
 | **HUD Lateral à Direita (Sem tapar letras)**| N/A | N/A | **Sim (w-80)** | **Aprovado** ✅ |
 | **QR Code Compacto Fundo Branco** | N/A | N/A | **Sim** | **Aprovado** ✅ |
@@ -95,10 +110,10 @@
 
 ---
 
-## 4. Veredito Geral de Engenharia de Qualidade
+## 5. Veredito Geral de Engenharia de Qualidade
 
 > **STATUS:** **HOMOLOGADO E APROVADO COM 100% DE CONFORMIDADE** 🚀🏆✨  
-> O commit `23b4711` transforma o Telão do Karaokê em uma experiência visual profissional de palco e TV: o vídeo aproveita 100% da tela em widescreen, o HUD flutuante à direita organiza todas as informações essenciais (QR Code, Cantor, Nota Atual e Próximo) sem obstruir a legenda central, e o suporte a salas de até 24 caracteres facilita o compartilhamento de eventos temáticos.
+> O commit `243b2ad` introduz integridade e justiça competitiva ao sistema de pontuação da festa: elimina qualquer possibilidade de auto-voto ou spam de avaliações, ao mesmo tempo em que fornece feedback visual transparente e amigável tanto para quem está cantando quanto para os convidados que estão avaliando.
 
 **Assinatura:**  
 *Q.A Sênior — Engenharia de Qualidade Karaokê da Festa*  
