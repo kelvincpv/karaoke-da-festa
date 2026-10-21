@@ -1,8 +1,27 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { Sparkles, Mic, Flame, QrCode, ArrowLeft, Disc3, ExternalLink, Star } from 'lucide-react';
-import { YOUTUBE_PREMIUM_LOGIN_URL, getYouTubeThumbnail } from '../lib/youtube';
-import { RoomRealtimeService, type PlaybackCommandPayload, type VotingCountdownPayload } from '../services/roomRealtimeService';
+import {
+  Sparkles,
+  Mic,
+  Flame,
+  QrCode,
+  ArrowLeft,
+  Disc3,
+  ExternalLink,
+  Star,
+  RefreshCw,
+  AlertTriangle,
+} from 'lucide-react';
+import {
+  YOUTUBE_PREMIUM_LOGIN_URL,
+  getYouTubeThumbnail,
+  searchYouTubeKaraoke,
+} from '../lib/youtube';
+import {
+  RoomRealtimeService,
+  type PlaybackCommandPayload,
+  type VotingCountdownPayload,
+} from '../services/roomRealtimeService';
 
 interface FloatingReaction {
   id: number;
@@ -36,6 +55,11 @@ export const TvModePage: React.FC = () => {
     nextSong?: string;
     nextVideoId?: string;
   } | null>(null);
+  const [videoError, setVideoError] = useState<{
+    isBlocked: boolean;
+    code?: number | string;
+  } | null>(null);
+  const [isSearchingAlt, setIsSearchingAlt] = useState(false);
 
   const roomCode = (code || 'FESTA1').toUpperCase();
   const joinUrl = `${window.location.origin}/room/${roomCode}`;
@@ -52,11 +76,52 @@ export const TvModePage: React.FC = () => {
   // Manter ref sincronizada para uso dentro de timers e listeners
   useEffect(() => {
     currentSongRef.current = currentSong;
+    setVideoError(null);
+    setIsSearchingAlt(false);
     // Se a música mudou, resetar o lock de encerramento da música anterior
     if (currentSong?.id && endedSongIdRef.current !== currentSong.id) {
       endedSongIdRef.current = null;
     }
   }, [currentSong]);
+
+  // Busca e troca por versão de karaokê compatível quando a gravadora bloqueia o vídeo
+  const handleReplaceWithCompatible = async () => {
+    if (!currentSong) return;
+    setIsSearchingAlt(true);
+    try {
+      const res = await searchYouTubeKaraoke(currentSong.title);
+      const alternative = res.items.find((item) => item.id !== currentSong.youtubeVideoId);
+      if (alternative) {
+        const updatedSong: CurrentTvSong = {
+          ...currentSong,
+          youtubeVideoId: alternative.id,
+          title: alternative.title,
+        };
+        setCurrentSong(updatedSong);
+        setVideoError(null);
+        serviceRef.current?.setCurrentSong({
+          id: currentSong.id || String(Date.now()),
+          title: alternative.title,
+          artist: alternative.channelTitle,
+          singer: currentSong.singer,
+          duet: currentSong.duet,
+          duration: '04:00',
+          youtubeVideoId: alternative.id,
+        });
+      } else {
+        // Se não encontrar alternativa liberada, abre direto no site do YouTube
+        window.open(
+          `https://www.youtube.com/watch?v=${currentSong.youtubeVideoId}&autoplay=1`,
+          '_blank',
+          'noopener,noreferrer'
+        );
+      }
+    } catch (err) {
+      console.warn('Erro ao buscar alternativa compatível:', err);
+    } finally {
+      setIsSearchingAlt(false);
+    }
+  };
 
   // Enviar comando para o iframe do YouTube via postMessage
   const sendIframeCommand = (func: string, args: any[] = []) => {
@@ -192,6 +257,27 @@ export const TvModePage: React.FC = () => {
 
         if (isEndedByState || isNearEnd) {
           handleVideoEnded();
+        }
+
+        // 3. YouTube onError: 101 ou 150 (vídeo desativado para incorporação em outros sites)
+        const isEmbedBlocked =
+          (data.event === 'onError' &&
+            (data.info === 150 ||
+              data.info === 101 ||
+              data.info === '150' ||
+              data.info === '101' ||
+              data.info === 100)) ||
+          (data.event === 'infoDelivery' &&
+            (data.info?.errorCode === 150 ||
+              data.info?.errorCode === 101 ||
+              data.info?.error === 150 ||
+              data.info?.error === 101));
+
+        if (isEmbedBlocked) {
+          setVideoError({
+            isBlocked: true,
+            code: data.info || data.info?.errorCode || 150,
+          });
         }
       } catch {
         // Ignora mensagens de outros iframes/extensões
@@ -345,13 +431,32 @@ export const TvModePage: React.FC = () => {
           )}
         </div>
 
-        {/* Right Section: Status Badge + Mini QR Code info */}
+        {/* Right Section: YouTube Direct Link + Premium + Mini QR Code */}
         <div className="flex items-center gap-2.5">
+          <button
+            disabled={!currentSong}
+            onClick={() => {
+              if (currentSong?.youtubeVideoId) {
+                window.open(
+                  `https://www.youtube.com/watch?v=${currentSong.youtubeVideoId}&autoplay=1`,
+                  '_blank',
+                  'noopener,noreferrer'
+                );
+              }
+            }}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-red-500/50 bg-red-500/15 text-red-400 hover:bg-red-500/25 transition-all text-xs font-bold disabled:opacity-30 shadow-sm"
+            title="Abrir reprodução direta no site do YouTube em tela cheia (sem restrições de canais)"
+          >
+            <ExternalLink className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Assistir no YouTube (Tela Cheia)</span>
+            <span className="sm:hidden">YouTube</span>
+          </button>
+
           <a
             href={YOUTUBE_PREMIUM_LOGIN_URL}
             target="_blank"
             rel="noopener noreferrer"
-            className="hidden lg:flex items-center gap-1.5 px-3 py-1 rounded-xl border border-brand-gold/40 bg-brand-gold/10 text-brand-gold hover:bg-brand-gold/20 transition-all text-xs font-bold"
+            className="hidden lg:flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-brand-gold/40 bg-brand-gold/10 text-brand-gold hover:bg-brand-gold/20 transition-all text-xs font-bold"
             title="Conecte sua conta do YouTube Premium para tocar sem anúncios"
           >
             <span>👑</span>
@@ -387,6 +492,63 @@ export const TvModePage: React.FC = () => {
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
               allowFullScreen
             />
+
+            {/* OVERLAY DE VÍDEO COM RESTRIÇÃO DE INCORPORAÇÃO (ERRO 150/101) */}
+            {videoError?.isBlocked && (
+              <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-dark-base/95 backdrop-blur-xl p-6 md:p-10 text-center animate-fade-in space-y-4">
+                <div className="w-16 h-16 rounded-2xl bg-status-danger/20 border border-status-danger/40 flex items-center justify-center text-3xl shadow-neon-pink mb-1">
+                  <AlertTriangle className="w-8 h-8 text-status-danger" />
+                </div>
+
+                <div className="max-w-xl space-y-2">
+                  <span className="px-3 py-1 rounded-full bg-status-danger/20 text-status-danger border border-status-danger/30 text-xs font-bold uppercase tracking-wider">
+                    Restrição do Proprietário do Vídeo
+                  </span>
+                  <h3 className="font-display font-black text-2xl md:text-3xl text-white">
+                    Reprodução Externa Bloqueada
+                  </h3>
+                  <p className="text-xs md:text-sm text-text-secondary leading-relaxed">
+                    A gravadora de <strong className="text-white">"{currentSong.title}"</strong> desativou a incorporação em outros sites, mas você pode reproduzir diretamente pelo YouTube em tela cheia com 1 clique ou trocar por outra versão de karaokê liberada!
+                  </p>
+                </div>
+
+                <div className="flex flex-col sm:flex-row items-center gap-3 pt-2 w-full max-w-md">
+                  <button
+                    onClick={() => {
+                      if (currentSong?.youtubeVideoId) {
+                        window.open(
+                          `https://www.youtube.com/watch?v=${currentSong.youtubeVideoId}&autoplay=1`,
+                          '_blank',
+                          'noopener,noreferrer'
+                        );
+                      }
+                    }}
+                    className="w-full sm:flex-1 py-3 px-4 rounded-xl bg-gradient-to-r from-red-600 to-brand-pink text-white font-bold text-xs flex items-center justify-center gap-2 shadow-neon-pink hover:scale-105 active:scale-95 transition-all"
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                    <span>Abrir no YouTube Agora</span>
+                  </button>
+
+                  <button
+                    disabled={isSearchingAlt}
+                    onClick={handleReplaceWithCompatible}
+                    className="w-full sm:flex-1 py-3 px-4 rounded-xl border border-brand-purple/50 bg-brand-purple/20 text-brand-purple-light hover:bg-brand-purple/30 font-bold text-xs flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+                  >
+                    <RefreshCw className={`w-4 h-4 ${isSearchingAlt ? 'animate-spin' : ''}`} />
+                    <span>{isSearchingAlt ? 'Buscando...' : 'Trocar por Versão Compatível'}</span>
+                  </button>
+                </div>
+
+                <div className="pt-2">
+                  <button
+                    onClick={() => serviceRef.current?.advanceToNextSong()}
+                    className="text-xs text-text-muted hover:text-white underline transition-colors"
+                  >
+                    Pular para a próxima música da fila ⏭
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* OVERLAY DE CONTAGEM REGRESSIVA PÓS-SHOW (10 SEGUNDOS COM BARRA DE PROGRESSO) */}
             {countdownState?.active && (

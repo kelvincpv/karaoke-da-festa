@@ -384,6 +384,20 @@ export const OrganizerPage: React.FC = () => {
               </button>
             </div>
 
+            {/* Atalho Direto para o Site do YouTube */}
+            {currentSong && (
+              <a
+                href={`https://www.youtube.com/watch?v=${currentSong.youtubeVideoId}&autoplay=1`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl border border-red-500/30 bg-red-500/10 text-red-400 hover:bg-red-500/20 text-xs font-bold transition-all shadow-sm"
+                title="Abrir o vídeo direto no YouTube caso o canal bloqueie reprodução externa"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                <span>Abrir Música no YouTube Oficial (Sem Restrições)</span>
+              </a>
+            )}
+
             {/* Banner de Contagem Regressiva de Avaliação (10 segundos) */}
             {countdownState?.active && (
               <div className="p-3.5 rounded-xl border border-brand-gold/60 bg-brand-gold/15 space-y-2.5 shadow-neon-gold/20 animate-fade-in">

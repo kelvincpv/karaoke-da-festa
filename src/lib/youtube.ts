@@ -110,9 +110,17 @@ export async function searchYouTubeKaraoke(
   // 3. Busca ao vivo na YouTube Data API v3
   try {
     const searchQuery = encodeURIComponent(`${query.trim()} karaoke`);
-    const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=8&q=${searchQuery}&type=video&key=${effectiveKey}`;
-    const response = await fetch(url);
-    const data = await response.json().catch(() => null);
+    // Prioriza estritamente vídeos com incorporação e reprodução externa liberadas (videoEmbeddable=true e videoSyndicated=true)
+    let url = `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=10&q=${searchQuery}&type=video&videoEmbeddable=true&videoSyndicated=true&key=${effectiveKey}`;
+    let response = await fetch(url);
+    let data = await response.json().catch(() => null);
+
+    // Fallback de contingência: se a busca filtrada não retornar itens, tenta sem o filtro para não deixar o usuário sem opções
+    if (response.ok && (!data?.items || data.items.length === 0)) {
+      url = `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=8&q=${searchQuery}&type=video&key=${effectiveKey}`;
+      response = await fetch(url);
+      data = await response.json().catch(() => null);
+    }
 
     if (response.ok && data?.items) {
       const items: YouTubeSearchResultItem[] = data.items
