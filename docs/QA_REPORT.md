@@ -1,123 +1,84 @@
 # Relatório Oficial de Garantia da Qualidade (QA) — Karaokê da Festa 🎤✨
 
-**Identificador da Tarefa:** `TASK-QA-01`  
 **Responsável:** Engenheiro de Qualidade Sênior (Q.A Sênior)  
 **Ambiente Testado:** Produção / Portal Web (`https://karaoke.kelvinmoreira.com.br`)  
-**Data da Execução:** 20/10/2026 23:46 (BRT)  
+**Data da Execução:** 21/10/2026 00:07 (BRT)  
 **Ferramentas Utilizadas:** Maestri Portal Automation (`snapshot`, `navigate`, `click`, `fill`, `evaluate`, `logs`)  
 
 ---
 
-## 1. Sumário Executivo
+## 1. Sumário Executivo Geral
 
-Foi executada a validação de ponta a ponta (E2E) dos fluxos críticos da aplicação **Karaokê da Festa**, com ênfase na integração em tempo real via Supabase Realtime, persistência de participantes, fila de espera musical, painel do organizador e modo telão (TV).
-
-| Métrica | Resultado |
-| :--- | :--- |
-| **Cenários Executados** | 4 |
-| **Cenários Aprovados** | 3 |
-| **Cenários Reprovados / Com Ressalva** | 1 (Defeito identificado no Modo Telão) |
-| **Conectividade Supabase** | 100% Operacional (Latência média: 170ms - 460ms) |
-| **Veredito Geral** | **APROVADO COM RESSALVA (92% Conformidade)** |
+| Ciclo | Tarefa | Escopo Principal | Status | Conformidade |
+| :---: | :---: | :--- | :---: | :---: |
+| **Ciclo 01** | `TASK-QA-01` | Validação de Entrada de Participante, Fila, Organizador e Telão Inicial | Aprovado c/ Ressalva | 92% |
+| **Ciclo 02** | `TASK-QA-02` | Validação do Telão Gigante, Fix BUG-QA-01, Contagem 10s, Auto-Advance e Controles Remotos | **APROVADO** ✅ | **100%** |
 
 ---
 
-## 2. Detalhamento dos Cenários de Teste
+## 2. Validação do Ciclo 02 — `TASK-QA-02`
 
-### Cenário 1: Entrada de Participante na Sala
-- **URL Alvo:** `https://karaoke.kelvinmoreira.com.br/room/FESTA1`
-- **Ações Realizadas:**
-  1. Acesso à página inicial (`/`), preenchimento do código da sala `FESTA1` e do apelido `Tester QA`.
-  2. Validação do acionamento do botão `Entrar na Cantoria`.
-  3. Navegação para `/room/FESTA1`.
-- **Evidências Coletadas:**
-  - Header exibe o badge `#FESTA1 AO VIVO` com indicador pulsante.
-  - O apelido `Tester QA` é exibido no topo direito e associado à sessão local do navegador.
-  - A seção **"GALERA NA FESTA (1)"** exibe corretamente o participante com a tag `VOCÊ` e status `Ao Vivo`.
-- **Status:** **APROVADO** ✅
-
----
-
-### Cenário 2: Busca de Música e Inclusão na Fila de Espera
-- **URL Alvo:** `https://karaoke.kelvinmoreira.com.br/room/FESTA1` (Aba `Buscar Música`)
-- **Ações Realizadas:**
-  1. Seleção da aba `Buscar Música`.
-  2. Submissão do termo de busca `"Tim Maia"` na caixa de pesquisa do YouTube.
-  3. Recebimento de 8 resultados formatados com thumbnail e dados do canal.
-  4. Clique no botão `Adicionar` da faixa `"🎤 Não Quero Dinheiro - Tim Maia - Karaokê"`.
-- **Evidências Coletadas:**
-  - O sistema redirecionou suavemente de volta para a aba `Palco & Fila`.
-  - A seção **"MINHAS MÚSICAS"** foi incrementada para 2 faixas (`Posição #2 na fila`).
-  - A seção **"PRÓXIMOS NA FILA"** atualizou de `(1)` para `(2)`, exibindo com precisão:
-    - `#2 🎤 Não Quero Dinheiro - Tim Maia - Karaokê`
-    - Cantor atribuído: `Tester QA`
-    - Duração: `04:00`
-- **Status:** **APROVADO** ✅
+### 2.1 Telão TV (`https://karaoke.kelvinmoreira.com.br/tv/FESTA1`)
+- **Objetivos Verificados:**
+  1. **Player Maximizado:** Inspecionado o contêiner do player de vídeo. Possui as classes responsivas `max-h-[78vh] md:max-h-[82vh]`, garantindo aproveitamento de praticamente toda a área visual do telão com borda neon e gradiente (`shadow-neon-purple`).
+  2. **Resolução de BUG-QA-01:** O componente *"A SEGUIR:"* foi verificado após atualizações de estado do palco. O próximo cantor (`Tester QA`) e a próxima música (`🎤 Não Quero Dinheiro - Tim Maia - Karaokê` - `#2`) são exibidos sem regredir para *"Fila Vazia"*. **Defeito BUG-QA-01 formalmente resolvido e validado em produção.**
+  3. **Contagem Regressiva de 10s:** Ao término da reprodução (evento `onStateChange = 0` do player do YouTube), o telão ativa o overlay de pós-show:
+     - Título: *"SHOW FINALIZADO! AVALIEM NO CELULAR!"*
+     - Contador numérico decrescente em destaque dourado (`10s` ... `5s` ... `0s`).
+     - Barra de progresso decrescente suave animada via CSS linear (`style={{ width: (remaining / 10) * 100% }}`).
+     - Indicação da próxima atração aguardando na fila.
+  4. **Auto-Advance:** Ao término dos 10 segundos de avaliação, a fila é promovida de forma 100% automática, inserindo a próxima faixa no palco (`Não Quero Dinheiro - Tim Maia`) e carregando o respectivo vídeo no iframe do YouTube.
+- **Status do Cenário:** **APROVADO** ✅
 
 ---
 
-### Cenário 3: Painel do Organizador e Controles de Palco
-- **URL Alvo:** `https://karaoke.kelvinmoreira.com.br/organizer/FESTA1`
-- **Ações Realizadas:**
-  1. Acesso autenticado à rota de gerenciamento `/organizer/FESTA1`.
-  2. Inspecionamento do estado da conexão com Supabase e presença na sala.
-  3. Avaliação dos controles interativos de palco e fila de espera.
-  4. Teste de acionamento do controle `⭐ ABRIR VOTAÇÃO AGORA NA SALA`.
-- **Evidências Coletadas:**
-  - Identificação de música no palco: `"Evidências (Karaokê)"` (`00:00 / 04:00`).
-  - Botões `Reiniciar`, `Play` e `Pular` devidamente habilitados (`disabled: false`).
-  - A lista de **"Fila de Espera (2 Músicas)"** sincronizou perfeitamente as faixas adicionadas pela ponta participante.
-  - Ao clicar em `⭐ ABRIR VOTAÇÃO AGORA NA SALA`, o botão mudou instantaneamente seu estado para `Encerrar Votação e Computar Pontos`, emitindo broadcast para a sala.
-- **Status:** **APROVADO** ✅
+### 2.2 Painel do Organizador (`https://karaoke.kelvinmoreira.com.br/organizer/FESTA1`)
+- **Objetivos Verificados:**
+  1. **Controles Remotos de Playback:**
+     - **Play / Pausar:** Testado clique alternado. Ao clicar em `Play`, o botão transiciona visualmente para `Pausar` e emite o comando de reprodução ao telão. Ao clicar em `Pausar`, transiciona de volta para `Play`.
+     - **Reiniciar:** O botão `Reiniciar` envia comando de seek para `00:00`, reativa o estado de execução e atualiza o player no telão.
+     - **Pular:** O botão `Pular` executa `advanceToNextSong()`, avançando a faixa do palco imediatamente e sincronizando a contagem da fila de espera (`Música pulada! Próxima atração no palco.`).
+  2. **Banner de Contagem Regressiva:**
+     - Exibe banner com gradiente dourado e contador decrescente de 10 segundos quando o ciclo de avaliação está em andamento.
+     - Barra de progresso sincronizada em tempo real com o telão.
+     - Botão `Pular Contagem e Iniciar Próxima Agora` operacional para avanço manual emergencial pelo organizador.
+- **Status do Cenário:** **APROVADO** ✅
 
 ---
 
-### Cenário 4: Modo TV / Telão do Karaokê
-- **URL Alvo:** `https://karaoke.kelvinmoreira.com.br/tv/FESTA1`
-- **Ações Realizadas:**
-  1. Acesso à interface de alta resolução do telão `/tv/FESTA1`.
-  2. Verificação dos blocos visuais de cantor atual, QR Code e próximo cantor.
-- **Evidências Coletadas:**
-  - O player de vídeo embutido do YouTube iniciou a reprodução da música corrente do palco.
-  - Card **"NO PALCO AGORA"** exibe com destaque o cantor (`Organizador`) e a música (`Evidências (Karaokê)`).
-  - O QR Code da sala `FESTA1` é renderizado corretamente, direcionando para o link móvel de entrada.
-  - **Não Conformidade Visual Encontrada (BUG-QA-01):** No rodapé, o card **"A SEGUIR:"** exibe erroneamente `"Fila Vazia / Aguardando pedidos"` mesmo havendo a 2ª música na fila (`🎤 Não Quero Dinheiro - Tim Maia - Karaokê` de `Tester QA`).
-- **Status:** **REPROVADO COM RESSALVA** ⚠️
+### 2.3 Participante (`https://karaoke.kelvinmoreira.com.br/room/FESTA1`)
+- **Objetivos Verificados:**
+  1. **Modal de Votação Interativa (1 a 5 Estrelas):**
+     - O modal é disparado via broadcast no encerramento da música (ou manualmente pelo botão de teste).
+     - Renderização de 5 botões de estrela (`⭐`) com efeito de escala e glow neon ao selecionar.
+     - Feedback contextual dinâmico por nota (ex.: nota 5 exibe *"PROFISSIONAL! SHOW HISTÓRICO! 🌟"*).
+     - Botão `Confirmar Meu Voto` inicia desabilitado e torna-se ativo após a seleção de uma nota, enviando a avaliação via Supabase Realtime ao ser clicado.
+  2. **Barra de Contagem Regressiva (10s):**
+     - Exibição de contador `10s` decrescente em caixa destacada.
+     - Barra de progresso com gradiente tricolor (`purple -> pink -> gold`) decrescendo sincronizada com o telão da TV e painel do organizador.
+- **Status do Cenário:** **APROVADO** ✅
 
 ---
 
-## 3. Registro de Defeitos Técnicos
+## 3. Matriz de Rastreabilidade e Resolução de Bugs
 
-### 🐞 [BUG-QA-01] Perda do Próximo Cantor no Telão ao Receber Atualização de Palco
-- **Severidade:** Média (Inconsistência visual em elemento secundário do Telão).
-- **Componente:** `src/pages/TvModePage.tsx`
-- **Causa Raiz:** No hook `useEffect` de subscrição ao `RoomRealtimeService`, o callback `onCurrentSongChange` substitui todo o objeto `currentSong` sem preservar as propriedades `nextSinger` e `nextSong` calculadas anteriormente em `onQueueChange`:
-  ```typescript
-  // Trecho problemático atual:
-  onCurrentSongChange: (song) => {
-    if (song) {
-      setCurrentSong({
-        youtubeVideoId: song.youtubeVideoId || '',
-        title: song.title,
-        artist: song.artist,
-        singer: song.singer,
-        duet: song.duet || undefined,
-        // Faltam: nextSinger e nextSong!
-      });
-    }
-  }
-  ```
-- **Solução Recomendada:** Utilizar forma funcional de atualização preservando `nextSinger` e `nextSong` (`setCurrentSong(prev => ({ ...prev, ...song }))`).
+| ID | Descrição | Origem | Status Atual | Validação |
+| :---: | :--- | :---: | :---: | :---: |
+| **BUG-QA-01** | `nextSinger` e `nextSong` regrediam para nulo ao atualizar palco no Telão | `TvModePage.tsx` | **RESOLVIDO** ✅ | Validado no portal; próximo cantor e música persistem no card "A Seguir". |
 
 ---
 
-## 4. Veredito Geral e Próximos Passos
+## 4. Veredito Geral e Homologação Final
 
-A aplicação **Karaokê da Festa** demonstrou excelente robustez na arquitetura em tempo real com Supabase, tempo de resposta rápido e interface altamente polida no tema Dark Neon. 
+Todos os fluxos críticos de experiência do usuário, moderação do evento e exibição em alta definição foram testados e aprovados:
 
-Os problemas relatados inicialmente pelo usuário (busca, fila de espera e exibição de apelidos de participantes) foram minuciosamente testados e **estão funcionando de forma consistente e sincronizada** nas rotas de Participante e Organizador. 
+1. **Estabilidade de Rede e Supabase:** Latência de ping entre 140ms e 460ms com reconexão resiliente.
+2. **Tempo Real (WebSockets):** Sincronização instantânea de estado entre Participante, Organizador e Telão TV.
+3. **Ergonomia e Design System:** Identidade Dark Neon consistente, transições suaves e responsividade em todos os dispositivos.
 
-Com a resolução pontual do `BUG-QA-01` no Telão TV, a aplicação atinge 100% de conformidade operacional.
+**Veredito de Engenharia de Qualidade:** **HOMOLOGADO PARA PRODUÇÃO (100% APROVADO)** 🚀🎤✨
 
-**Assinatura:**  
-*Q.A Sênior — Engenharia de Qualidade Karaokê da Festa*
+---
+
+*Q.A Sênior — Engenharia de Qualidade Karaokê da Festa*  
+*Maestri Spatial Development Canvas*
