@@ -37,6 +37,7 @@ export const SupabaseStatusBadge: React.FC<SupabaseStatusBadgeProps> = ({
   }, [testConnection]);
 
   const isConnected = status?.connected ?? false;
+  const isSchemaPending = status?.schemaPending ?? false;
 
   return (
     <>
@@ -49,6 +50,8 @@ export const SupabaseStatusBadge: React.FC<SupabaseStatusBadgeProps> = ({
           className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold backdrop-blur-md transition-all border shadow-sm ${
             loading
               ? 'bg-dark-surface/80 border-dark-border text-text-muted hover:border-brand-purple/40'
+              : isSchemaPending
+              ? 'bg-brand-gold/15 border-brand-gold/40 text-brand-gold hover:bg-brand-gold/25 shadow-brand-gold/10'
               : isConnected
               ? 'bg-status-success/10 border-status-success/30 text-status-success hover:bg-status-success/20 hover:border-status-success/60 shadow-status-success/10'
               : 'bg-status-warning/10 border-status-warning/30 text-status-warning hover:bg-status-warning/20 hover:border-status-warning/60 shadow-status-warning/10'
@@ -56,6 +59,11 @@ export const SupabaseStatusBadge: React.FC<SupabaseStatusBadgeProps> = ({
         >
           {loading ? (
             <RefreshCw className="w-3 h-3 animate-spin text-text-muted" />
+          ) : isSchemaPending ? (
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-gold opacity-75" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-brand-gold" />
+            </span>
           ) : isConnected ? (
             <span className="relative flex h-2 w-2">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-status-success opacity-75" />
@@ -69,6 +77,8 @@ export const SupabaseStatusBadge: React.FC<SupabaseStatusBadgeProps> = ({
             <Database className="w-3 h-3 opacity-80" />
             {loading ? (
               <span>Checando Supabase...</span>
+            ) : isSchemaPending ? (
+              <span>Supabase Conectado (Falta Rodar SQL)</span>
             ) : isConnected ? (
               <span>Supabase Conectado {!compact && status?.latencyMs ? `(${status.latencyMs}ms)` : ''}</span>
             ) : (
@@ -187,10 +197,25 @@ export const SupabaseStatusBadge: React.FC<SupabaseStatusBadgeProps> = ({
             </div>
 
             {/* Explicação Amigável */}
-            <div className="mt-4 text-xs text-text-secondary space-y-1.5">
-              {isConnected ? (
+            <div className="mt-4 text-xs text-text-secondary space-y-2">
+              {isSchemaPending ? (
+                <div className="p-3.5 rounded-xl bg-brand-gold/15 border border-brand-gold/40 text-brand-gold space-y-2">
+                  <div className="font-bold flex items-center gap-1.5 text-white text-xs">
+                    <span>🎉</span>
+                    <span>Conexão Supabase Validada! Falta apenas 1 passo:</span>
+                  </div>
+                  <p className="text-text-secondary text-[11px] leading-relaxed">
+                    A Vercel conectou perfeitamente com seu Supabase. Agora, basta rodar o script SQL para criar as tabelas e funções:
+                  </p>
+                  <ol className="list-decimal list-inside text-[11px] text-text-primary space-y-1 font-semibold">
+                    <li>Abra seu <strong>Supabase Dashboard</strong></li>
+                    <li>Vá em <strong>SQL Editor</strong></li>
+                    <li>Cole o arquivo <code>supabase/SCHEMA_COMPLETO.sql</code> e clique em <strong>Run</strong></li>
+                  </ol>
+                </div>
+              ) : isConnected ? (
                 <p className="text-status-success flex items-center gap-1 font-semibold">
-                  <Sparkles className="w-3.5 h-3.5 shrink-0" /> Seu banco de dados Supabase na Vercel está 100% operacional e pronto para a cantoria!
+                  <Sparkles className="w-3.5 h-3.5 shrink-0" /> Seu banco de dados Supabase está 100% operacional e pronto para a cantoria!
                 </p>
               ) : (
                 <p className="text-text-muted">

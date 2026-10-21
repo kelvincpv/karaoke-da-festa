@@ -43,6 +43,7 @@ export interface SupabaseHealthResult {
   url: string;
   error?: string;
   source?: string;
+  schemaPending?: boolean;
 }
 
 /**
@@ -103,7 +104,27 @@ export async function checkSupabaseHealth(): Promise<SupabaseHealthResult> {
       };
     }
 
-    // Caso todas tenham falhado
+    // Se o PostgREST respondeu que a função ou tabela não existe no schema cache,
+    // significa que a CONEXÃO FUNCIONOU PERFEITAMENTE, mas o script SQL ainda não foi rodado!
+    const isSchemaPending =
+      rpcError?.message?.includes('schema cache') ||
+      rpcError?.message?.includes('Could not find the function') ||
+      heartbeatTableError?.message?.includes('does not exist') ||
+      roomsTableError?.message?.includes('does not exist');
+
+    if (isSchemaPending) {
+      return {
+        connected: true,
+        schemaPending: true,
+        latencyMs: Math.round(performance.now() - startTime),
+        url: supabaseUrl,
+        source: 'supabase_api_verified',
+        error:
+          'Conexão com o Supabase estabelecida com sucesso! ⚠️ As tabelas/funções ainda não foram criadas no banco. Execute o arquivo supabase/SCHEMA_COMPLETO.sql no SQL Editor do Supabase.',
+      };
+    }
+
+    // Caso contrário, erro real de conexão
     const finalError =
       rpcError?.message || heartbeatTableError?.message || roomsTableError?.message || 'Falha de comunicação';
 
