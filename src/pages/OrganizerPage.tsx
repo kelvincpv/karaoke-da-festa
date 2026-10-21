@@ -148,12 +148,18 @@ export const OrganizerPage: React.FC = () => {
   );
   const [showKeyModal, setShowKeyModal] = useState(false);
   const [tempApiKey, setTempApiKey] = useState(youtubeApiKey);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 3000);
+  };
 
   const handleAddDirectSong = (e: React.FormEvent) => {
     e.preventDefault();
     const videoId = extractYouTubeVideoId(youtubeUrlInput);
     if (!videoId) {
-      alert('Por favor insira um link válido do YouTube (ex: https://www.youtube.com/watch?v=...)');
+      showToast('Por favor insira um link válido do YouTube');
       return;
     }
     const newItem: QueueItemLocal = {
@@ -172,7 +178,7 @@ export const OrganizerPage: React.FC = () => {
     setManualSongTitle('');
     setManualSinger('');
     setShowAddForm(false);
-    alert('Música adicionada à fila com sucesso!');
+    showToast('Música adicionada à fila com sucesso!');
   };
 
   const handleSaveApiKey = (e: React.FormEvent) => {
@@ -180,7 +186,7 @@ export const OrganizerPage: React.FC = () => {
     localStorage.setItem('karaoke_youtube_api_key', tempApiKey.trim());
     setYoutubeApiKey(tempApiKey.trim());
     setShowKeyModal(false);
-    alert('Chave da YouTube Data API salva com sucesso!');
+    showToast('Chave da YouTube Data API salva com sucesso!');
   };
 
   return (
@@ -321,7 +327,7 @@ export const OrganizerPage: React.FC = () => {
             <div className="grid grid-cols-3 gap-2">
               <button
                 disabled={!currentSong}
-                onClick={() => alert('Música reiniciada!')}
+                onClick={() => showToast('Música reiniciada!')}
                 className="flex items-center justify-center gap-1.5 py-2.5 rounded-xl border border-dark-border bg-dark-elevated hover:bg-dark-border text-xs font-semibold transition-all disabled:opacity-40"
               >
                 <RotateCcw className="w-4 h-4" /> Reiniciar
@@ -656,7 +662,7 @@ export const OrganizerPage: React.FC = () => {
 
             <div className="pt-2 border-t border-dark-border/60">
               <button
-                onClick={() => alert('Modo Silêncio ativado: envio de emojis pausado temporariamente.')}
+                onClick={() => showToast('Modo Silêncio ativado: envio de emojis pausado.')}
                 className="w-full py-2 rounded-xl border border-dark-border bg-dark-elevated hover:bg-dark-border text-xs font-semibold text-text-secondary"
               >
                 Pausar Emojis Temporariamente
@@ -665,6 +671,14 @@ export const OrganizerPage: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* TOAST FLUTUANTE DE NOTIFICAÇÃO NÃO-BLOQUEANTE */}
+      {toastMessage && (
+        <div className="fixed bottom-6 right-6 z-50 px-4 py-2.5 rounded-xl bg-dark-surface/95 backdrop-blur-md border border-brand-purple/50 text-white text-xs font-bold shadow-neon-purple animate-fadeIn flex items-center gap-2">
+          <span>✨</span>
+          <span>{toastMessage}</span>
+        </div>
+      )}
 
       {/* MODAL CONFIGURAR CHAVE DA YOUTUBE DATA API V3 */}
       {showKeyModal && (

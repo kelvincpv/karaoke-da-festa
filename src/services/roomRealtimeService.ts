@@ -1,6 +1,6 @@
 /**
- * Serviço central de sincronização em tempo real (Supabase Realtime)
- * Conecta Celulares, Telão (TV) e Painel do Organizador via Presence e Broadcast
+ * Serviço central de sincronização em tempo real (Supabase Realtime & PostgreSQL)
+ * Conecta Celulares, Telão (TV) e Painel do Organizador via Presence, Broadcast e Persistência
  */
 
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
@@ -49,6 +49,7 @@ export class RoomRealtimeService {
   private currentQueue: QueueItemSync[] = [];
   private currentSong: QueueItemSync | null = null;
   private votingOpen: boolean = false;
+  private roomId: string | null = null;
 
   constructor(
     roomCode: string,
@@ -64,7 +65,69 @@ export class RoomRealtimeService {
    * Conecta à sala do Supabase Realtime e registra listeners
    */
   public async connect(): Promise<void> {
-    // Canal seguro por sala
+    // 1. Garantir sala e participante no PostgreSQL se o Supabase estiver configurado
+    if (isSupabaseConfigured) {
+      try {
+        const { data: existingRoom } = await supabase
+          .from('rooms')
+          .select('id, code')
+          .eq('code', this.roomCode)
+          .maybeSingle();
+
+        if (existingRoom?.id) {
+          this.roomId = existingRoom.id;
+        } else {
+          const { data: newRoom } = await supabase
+            .from('rooms')
+            .insert({ code: this.roomCode, status: 'open' })
+            .select('id, code')
+            .maybeSingle();
+
+          if (newRoom?.id) {
+            this.roomId = newRoom.id;
+          }
+        }
+
+        // Registrar participante no banco
+        if (this.roomId && this.currentUser.name && this.currentUser.name !== 'Convidado' && this.currentUser.name !== 'Telão TV') {
+          await supabase.from('participants').insert({
+            room_id: this.roomId,
+            nickname: this.currentUser.name,
+            role: this.currentUser.isOrganizer ? 'organizer' : 'participant',
+          });
+        }
+
+        // Carregar fila persistente do PostgreSQL
+        if (this.roomId) {
+          const { data: dbItems } = await supabase
+            .from('queue_items')
+            .select('*')
+            .eq('room_id', this.roomId)
+            .in('status', ['pending', 'singing'])
+            .order('position', { ascending: true });
+
+          if (dbItems && dbItems.length > 0) {
+            const loadedQueue: QueueItemSync[] = dbItems.map((item) => ({
+              id: item.id,
+              title: item.song_title,
+              artist: item.artist,
+              singer: 'Cantor da Festa',
+              duet: null,
+              duration: '04:00',
+              youtubeVideoId: item.youtube_video_id,
+              isPriority: item.is_priority,
+              addedAt: item.created_at,
+            }));
+            this.currentQueue = loadedQueue;
+            this.callbacks.onQueueChange?.(loadedQueue);
+          }
+        }
+      } catch (err) {
+        console.warn('[Realtime] Banco de dados em sincronização inicial:', err);
+      }
+    }
+
+    // 2. Canal Supabase Realtime (Presence & Broadcast)
     const channelName = `karaoke_room_${this.roomCode}`;
     this.channel = supabase.channel(channelName, {
       config: {
@@ -73,7 +136,7 @@ export class RoomRealtimeService {
       },
     });
 
-    // 1. PRESENCE: Sincronização de participantes conectados em tempo real
+    // PRESENCE: Participantes conectados agora
     this.channel
       .on('presence', { event: 'sync' }, () => {
         if (!this.channel) return;
@@ -99,20 +162,17 @@ export class RoomRealtimeService {
         }
       })
       .on('presence', { event: 'join' }, () => {
-        // Se alguém novo entrar e nós formos o organizador ou já tivermos a fila, compartilhamos o estado
         if (this.currentUser.isOrganizer || this.currentQueue.length > 0) {
           this.broadcastState();
         }
       });
 
-    // 2. BROADCAST: Fila de músicas, controle de palco e votações
+    // BROADCAST: Fila de músicas, palco, votação e reações
     this.channel
       .on('broadcast', { event: 'queue_update' }, ({ payload }) => {
         if (Array.isArray(payload?.queue)) {
           this.currentQueue = payload.queue;
-          if (this.callbacks.onQueueChange) {
-            this.callbacks.onQueueChange(this.currentQueue);
-          }
+          this.callbacks.onQueueChange?.(this.currentQueue);
         }
       })
       .on('broadcast', { event: 'queue_add_item' }, ({ payload }) => {
@@ -120,23 +180,17 @@ export class RoomRealtimeService {
           const exists = this.currentQueue.some((q) => q.id === payload.item.id);
           if (!exists) {
             this.currentQueue = [...this.currentQueue, payload.item];
-            if (this.callbacks.onQueueChange) {
-              this.callbacks.onQueueChange(this.currentQueue);
-            }
+            this.callbacks.onQueueChange?.(this.currentQueue);
           }
         }
       })
       .on('broadcast', { event: 'stage_change' }, ({ payload }) => {
         this.currentSong = payload?.currentSong || null;
-        if (this.callbacks.onCurrentSongChange) {
-          this.callbacks.onCurrentSongChange(this.currentSong);
-        }
+        this.callbacks.onCurrentSongChange?.(this.currentSong);
       })
       .on('broadcast', { event: 'voting_toggle' }, ({ payload }) => {
         this.votingOpen = Boolean(payload?.votingOpen);
-        if (this.callbacks.onVotingChange) {
-          this.callbacks.onVotingChange(this.votingOpen);
-        }
+        this.callbacks.onVotingChange?.(this.votingOpen);
       })
       .on('broadcast', { event: 'reaction' }, ({ payload }) => {
         if (payload?.emoji && this.callbacks.onReaction) {
@@ -148,14 +202,13 @@ export class RoomRealtimeService {
         }
       })
       .on('broadcast', { event: 'request_state' }, () => {
-        // Alguém que acabou de abrir a tela pediu o estado atual da sala
         if (this.currentUser.isOrganizer || this.currentQueue.length > 0 || this.currentSong) {
           this.broadcastState();
         }
       })
       .on('broadcast', { event: 'sync_state' }, ({ payload }) => {
         if (payload) {
-          if (Array.isArray(payload.queue)) {
+          if (Array.isArray(payload.queue) && payload.queue.length > 0) {
             this.currentQueue = payload.queue;
             this.callbacks.onQueueChange?.(this.currentQueue);
           }
@@ -170,27 +223,24 @@ export class RoomRealtimeService {
         }
       });
 
-    // Iniciar inscrição
+    // Iniciar inscrição no canal
     await this.channel.subscribe(async (status) => {
       if (status === 'SUBSCRIBED' && this.channel) {
-        // Rastrear presença do usuário atual
         await this.channel.track(this.currentUser);
 
-        // Pedir o estado atual da sala a quem já estiver conectado
         this.channel.send({
           type: 'broadcast',
           event: 'request_state',
           payload: { requesterId: this.currentUser.id },
         });
 
-        // Tentativa de carregar da base Supabase se o banco estiver disponível
-        this.fetchInitialStateFromDatabase();
+        this.fetchInitialStateFromLocalStorage();
       }
     });
   }
 
   /**
-   * Adiciona uma música à fila e avisa todos os aparelhos
+   * Adiciona música à fila com transmissão imediata e persistência
    */
   public addSongToQueue(item: QueueItemSync): void {
     const updated = [...this.currentQueue, item];
@@ -203,11 +253,11 @@ export class RoomRealtimeService {
     });
 
     this.callbacks.onQueueChange?.(updated);
-    this.persistQueueToDatabase(updated);
+    this.persistQueue(updated, item);
   }
 
   /**
-   * Reordena ou remove itens da fila
+   * Atualiza a fila inteira (reordenação ou remoção)
    */
   public updateQueue(newQueue: QueueItemSync[]): void {
     this.currentQueue = newQueue;
@@ -219,11 +269,11 @@ export class RoomRealtimeService {
     });
 
     this.callbacks.onQueueChange?.(newQueue);
-    this.persistQueueToDatabase(newQueue);
+    this.persistQueue(newQueue);
   }
 
   /**
-   * Troca a música atual no palco (Telão e Celulares)
+   * Altera a música do palco
    */
   public setCurrentSong(song: QueueItemSync | null): void {
     this.currentSong = song;
@@ -238,7 +288,7 @@ export class RoomRealtimeService {
   }
 
   /**
-   * Abre ou fecha a votação no telão e nos celulares
+   * Alterna a votação
    */
   public toggleVoting(open: boolean): void {
     this.votingOpen = open;
@@ -253,7 +303,7 @@ export class RoomRealtimeService {
   }
 
   /**
-   * Dispara um emoji de reação para o telão e outros participantes
+   * Envia reação em tempo real
    */
   public sendReaction(emoji: string, xOffset?: number): void {
     this.channel?.send({
@@ -264,7 +314,7 @@ export class RoomRealtimeService {
   }
 
   /**
-   * Envia o estado completo para sincronização de novos clientes
+   * Compartilha o estado com novos clientes
    */
   public broadcastState(): void {
     this.channel?.send({
@@ -290,22 +340,33 @@ export class RoomRealtimeService {
   }
 
   /**
-   * Persistência opcional na base de dados Supabase
+   * Persiste a fila no banco de dados e localmente
    */
-  private async persistQueueToDatabase(queue: QueueItemSync[]): Promise<void> {
-    if (!isSupabaseConfigured) return;
+  private async persistQueue(queue: QueueItemSync[], newItem?: QueueItemSync): Promise<void> {
     try {
-      // Salva ou atualiza a lista de itens da fila se as tabelas existirem
       localStorage.setItem(`karaoke_queue_${this.roomCode}`, JSON.stringify(queue));
+
+      if (isSupabaseConfigured && this.roomId && newItem) {
+        await supabase.from('queue_items').insert({
+          room_id: this.roomId,
+          song_title: newItem.title,
+          artist: newItem.artist,
+          youtube_video_id: newItem.youtubeVideoId || '',
+          position: queue.length,
+          status: 'pending',
+          is_priority: Boolean(newItem.isPriority),
+          duration_seconds: 240,
+        });
+      }
     } catch {
-      // Falha silenciosa para manter a fluidez de palco
+      // Ignora erro para não travar a aplicação
     }
   }
 
   /**
-   * Tenta carregar do cache local ou Supabase ao inicializar
+   * Carrega estado do localStorage se a fila estiver vazia
    */
-  private fetchInitialStateFromDatabase(): void {
+  private fetchInitialStateFromLocalStorage(): void {
     try {
       const saved = localStorage.getItem(`karaoke_queue_${this.roomCode}`);
       if (saved) {
@@ -316,7 +377,7 @@ export class RoomRealtimeService {
         }
       }
     } catch {
-      // Ignora erro de parsing
+      // Ignora erro
     }
   }
 }

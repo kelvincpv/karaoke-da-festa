@@ -181,12 +181,19 @@ export const RoomParticipantPage: React.FC = () => {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 3000);
+  };
+
   const handleSaveUserKey = (e: React.FormEvent) => {
     e.preventDefault();
     setYouTubeApiKey(tempApiKey.trim());
     setHasApiKey(Boolean(tempApiKey.trim()));
     setShowKeyModal(false);
-    alert('Chave do YouTube salva com sucesso neste dispositivo!');
+    showToast('Chave do YouTube salva com sucesso!');
     if (searchQuery.trim()) {
       searchYouTubeKaraoke(searchQuery.trim(), tempApiKey.trim()).then((res) => {
         setSearchResults(res.items);
@@ -229,7 +236,7 @@ export const RoomParticipantPage: React.FC = () => {
     });
 
     setSearchQuery('');
-    alert(`"${title}" foi adicionada à fila com sucesso! 🎤✨`);
+    showToast(`"${title}" adicionada à fila! 🎤✨`);
     setActiveTab('stage');
   };
 
@@ -899,7 +906,7 @@ export const RoomParticipantPage: React.FC = () => {
             <button
               disabled={!selectedRating}
               onClick={() => {
-                alert(`Voto de ${selectedRating} estrelas enviado! 🌟`);
+                showToast(`Voto de ${selectedRating} estrelas enviado! 🌟`);
                 setShowVotingModal(false);
                 setSelectedRating(null);
               }}
@@ -908,6 +915,14 @@ export const RoomParticipantPage: React.FC = () => {
               Confirmar Meu Voto
             </button>
           </div>
+        </div>
+      )}
+
+      {/* TOAST FLUTUANTE DE NOTIFICAÇÃO */}
+      {toastMessage && (
+        <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-xl bg-dark-surface/95 backdrop-blur-md border border-brand-purple/50 text-white text-xs font-bold shadow-neon-purple animate-fadeIn flex items-center gap-2 max-w-[90vw] text-center">
+          <span>✨</span>
+          <span>{toastMessage}</span>
         </div>
       )}
 
