@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Karaokê Bridge</title>
+  <style>
+    body {
+      width: 320px;
+      margin: 0;
+      padding: 16px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      background: #0f1016;
+      color: #f1f2f6;
+      box-sizing: border-box;
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 14px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      padding-bottom: 12px;
+    }
+    .logo-icon {
+      font-size: 24px;
+    }
+    h1 {
+      font-size: 16px;
+      margin: 0;
+      font-weight: 800;
+      background: linear-gradient(135deg, #a855f7, #ec4899);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+      background: rgba(34, 197, 94, 0.15);
+      border: 1px solid rgba(34, 197, 94, 0.4);
+      color: #4ade80;
+      margin-bottom: 12px;
+    }
+    .dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #4ade80;
+    }
+    p {
+      font-size: 12px;
+      color: #9ca3af;
+      line-height: 1.4;
+      margin: 0 0 14px 0;
+    }
+    .card {
+      background: #181924;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 12px;
+      padding: 12px;
+      margin-bottom: 12px;
+    }
+    .card-title {
+      font-size: 11px;
+      text-transform: uppercase;
+      font-weight: 700;
+      color: #a855f7;
+      margin-bottom: 6px;
+    }
+    .btn {
+      display: block;
+      width: 100%;
+      padding: 8px 12px;
+      border-radius: 8px;
+      border: none;
+      background: linear-gradient(135deg, #a855f7, #ec4899);
+      color: white;
+      font-weight: 700;
+      font-size: 12px;
+      cursor: pointer;
+      text-align: center;
+      text-decoration: none;
+      box-sizing: border-box;
+      transition: transform 0.1s;
+    }
+    .btn:hover {
+      opacity: 0.95;
+      transform: scale(1.02);
+    }
+    .footer {
+      font-size: 10px;
+      color: #6b7280;
+      text-align: center;
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <span class="logo-icon">🎤</span>
+    <div>
+      <h1>Karaokê Bridge</h1>
+      <span style="font-size: 10px; color: #9ca3af;">v1.0.0 • YouTube Premium Sync</span>
+    </div>
+  </div>
+
+  <div class="status-badge">
+    <span class="dot"></span> Extensão Ativa & Pronta
+  </div>
+
+  <p>
+    Esta extensão reproduz automaticamente vídeos com restrição de incorporação direto no YouTube Premium, monitorando o término e voltando para a avaliação.
+  </p>
+
+  <div class="card">
+    <div class="card-title">Configuração HDMI / Projetor</div>
+    <div style="font-size: 11px; color: #d1d5db;">
+      Posicione a janela do Telão no Projetor (Monitor 2). A janela do YouTube se ajustará automaticamente sobre o palco.
+    </div>
+  </div>
+
+  <button id="testBridgeBtn" class="btn">Testar Conexão</button>
+  <div id="testResult" style="font-size: 11px; color: #a855f7; text-align: center; margin-top: 8px; display: none;"></div>
+
+  <div class="footer">
+    Karaokê da Festa • kelvinmoreira.com.br
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

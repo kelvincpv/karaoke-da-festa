@@ -23,9 +23,11 @@ import {
   ExternalLink,
   Plus,
   Key,
+  Cast,
 } from 'lucide-react';
 import { extractYouTubeVideoId, getYouTubeThumbnail, YOUTUBE_PREMIUM_LOGIN_URL } from '../lib/youtube';
 import { RoomRealtimeService } from '../services/roomRealtimeService';
+import { youtubeBridgeService, type BridgeState } from '../services/youtubeBridgeService';
 
 interface QueueItemLocal {
   id: string;
@@ -63,7 +65,16 @@ export const OrganizerPage: React.FC = () => {
     songTitle: string;
     singerName: string;
   } | null>(null);
+  const [bridgeState, setBridgeState] = useState<BridgeState>(youtubeBridgeService.getState());
   const serviceRef = useRef<RoomRealtimeService | null>(null);
+
+  // Escuta status da extensão Karaokê Bridge
+  useEffect(() => {
+    const unsub = youtubeBridgeService.subscribe((state) => {
+      setBridgeState(state);
+    });
+    return () => unsub();
+  }, []);
 
   // Inicialização do Supabase Realtime para a sala
   useEffect(() => {
@@ -205,6 +216,23 @@ export const OrganizerPage: React.FC = () => {
     showToast('Chave da YouTube Data API salva com sucesso!');
   };
 
+  const handleOpenViaBridge = () => {
+    if (!currentSong?.youtubeVideoId) return;
+    youtubeBridgeService.openExternalVideo({
+      videoId: currentSong.youtubeVideoId,
+      title: currentSong.title,
+      singer: currentSong.singer,
+      sessionId: (code || 'FESTA1').toUpperCase(),
+      performanceId: currentSong.id || currentSong.youtubeVideoId,
+    });
+    showToast('Reprodução enviada para a extensão Karaokê Bridge!');
+  };
+
+  const handleCloseBridge = () => {
+    youtubeBridgeService.closeExternalVideo();
+    showToast('Janela externa do YouTube fechada.');
+  };
+
   return (
     <div className="min-h-screen bg-dark-base text-text-primary p-4 lg:p-6 flex flex-col gap-6">
       {/* Top Header Bar */}
@@ -237,6 +265,29 @@ export const OrganizerPage: React.FC = () => {
 
         {/* Quick Actions Header */}
         <div className="flex items-center gap-2 flex-wrap">
+          {bridgeState.isExternalPlaying ? (
+            <div className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-brand-purple/60 bg-brand-purple/20 text-brand-purple-light text-xs font-bold shadow-neon-purple animate-pulse">
+              <Cast className="w-4 h-4 text-brand-pink" />
+              <span>Bridge Ativa</span>
+            </div>
+          ) : bridgeState.status !== 'not_installed' ? (
+            <div
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-status-success/40 bg-status-success/15 text-status-success text-xs font-bold"
+              title="Extensão Karaokê Bridge detectada e sincronizada"
+            >
+              <span className="w-2 h-2 rounded-full bg-status-success animate-pulse" />
+              <span>Bridge Pronta</span>
+            </div>
+          ) : (
+            <div
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-dark-border bg-dark-elevated text-text-muted text-xs font-semibold"
+              title="Extensão Karaokê Bridge não detectada neste navegador. Recomendada para vídeos com restrição."
+            >
+              <span className="w-2 h-2 rounded-full bg-dark-border" />
+              <span>Bridge Offline</span>
+            </div>
+          )}
+
           <button
             onClick={handleCopyLink}
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-dark-border bg-dark-elevated hover:border-brand-purple/50 text-xs font-semibold transition-all"
@@ -386,16 +437,37 @@ export const OrganizerPage: React.FC = () => {
 
             {/* Atalho Direto para o Site do YouTube */}
             {currentSong && (
-              <a
-                href={`https://www.youtube.com/watch?v=${currentSong.youtubeVideoId}&autoplay=1`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl border border-red-500/30 bg-red-500/10 text-red-400 hover:bg-red-500/20 text-xs font-bold transition-all shadow-sm"
-                title="Abrir o vídeo direto no YouTube caso o canal bloqueie reprodução externa"
-              >
-                <ExternalLink className="w-3.5 h-3.5" />
-                <span>Abrir Música no YouTube Oficial (Sem Restrições)</span>
-              </a>
+              <div className="flex flex-col gap-2 pt-1">
+                {bridgeState.isExternalPlaying ? (
+                  <button
+                    onClick={handleCloseBridge}
+                    className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl border border-brand-purple/50 bg-brand-purple/20 text-brand-purple-light hover:bg-brand-purple/30 text-xs font-bold transition-all shadow-neon-purple"
+                  >
+                    <Cast className="w-3.5 h-3.5 text-brand-pink" />
+                    <span>Fechar Janela do Karaokê Bridge</span>
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleOpenViaBridge}
+                    className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl border border-brand-purple/40 bg-brand-purple/15 text-brand-purple-light hover:bg-brand-purple/25 text-xs font-bold transition-all"
+                    title="Abre o vídeo em janela popup do YouTube Premium posicionada sobre o telão"
+                  >
+                    <Cast className="w-3.5 h-3.5 text-brand-pink" />
+                    <span>Reproduzir via Karaokê Bridge (Sem Restrições)</span>
+                  </button>
+                )}
+
+                <a
+                  href={`https://www.youtube.com/watch?v=${currentSong.youtubeVideoId}&autoplay=1`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl border border-red-500/30 bg-red-500/10 text-red-400 hover:bg-red-500/20 text-xs font-bold transition-all shadow-sm"
+                  title="Abrir o vídeo direto no YouTube caso o canal bloqueie reprodução externa"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span>Abrir Música no YouTube Oficial</span>
+                </a>
+              </div>
             )}
 
             {/* Banner de Contagem Regressiva de Avaliação (10 segundos) */}

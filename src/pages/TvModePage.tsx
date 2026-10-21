@@ -11,6 +11,8 @@ import {
   Star,
   RefreshCw,
   AlertTriangle,
+  Cast,
+  CheckCircle2,
 } from 'lucide-react';
 import {
   YOUTUBE_PREMIUM_LOGIN_URL,
@@ -22,6 +24,10 @@ import {
   type PlaybackCommandPayload,
   type VotingCountdownPayload,
 } from '../services/roomRealtimeService';
+import {
+  youtubeBridgeService,
+  type BridgeState,
+} from '../services/youtubeBridgeService';
 
 interface FloatingReaction {
   id: number;
@@ -60,6 +66,7 @@ export const TvModePage: React.FC = () => {
     code?: number | string;
   } | null>(null);
   const [isSearchingAlt, setIsSearchingAlt] = useState(false);
+  const [bridgeState, setBridgeState] = useState<BridgeState>(youtubeBridgeService.getState());
 
   const roomCode = (code || 'FESTA1').toUpperCase();
   const joinUrl = `${window.location.origin}/room/${roomCode}`;
@@ -69,9 +76,59 @@ export const TvModePage: React.FC = () => {
 
   const serviceRef = useRef<RoomRealtimeService | null>(null);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
+  const stageContainerRef = useRef<HTMLDivElement | null>(null);
   const countdownIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const currentSongRef = useRef<CurrentTvSong | null>(null);
   const endedSongIdRef = useRef<string | null>(null);
+
+  // Escuta status e eventos do Karaokê Bridge (extensão Chrome)
+  useEffect(() => {
+    const unsubState = youtubeBridgeService.subscribe((state) => {
+      setBridgeState(state);
+    });
+
+    const unsubEnded = youtubeBridgeService.onVideoEnded((payload) => {
+      console.log('[TvModePage] Fim de reprodução reportado pela Karaokê Bridge:', payload);
+      handleVideoEnded();
+    });
+
+    return () => {
+      unsubState();
+      unsubEnded();
+    };
+  }, []);
+
+  // Calcula coordenadas exatas da área do player na tela/projetor para posicionamento do popup
+  const getStageBounds = () => {
+    if (!stageContainerRef.current) return undefined;
+    const rect = stageContainerRef.current.getBoundingClientRect();
+    return {
+      left: Math.round(window.screenX + rect.left),
+      top: Math.round(window.screenY + rect.top),
+      width: Math.round(rect.width),
+      height: Math.round(rect.height),
+    };
+  };
+
+  // Abre a música bloqueada na janela do YouTube Premium via Karaokê Bridge
+  const handleOpenViaBridge = () => {
+    if (!currentSong?.youtubeVideoId) return;
+    const bounds = getStageBounds();
+    youtubeBridgeService.openExternalVideo({
+      videoId: currentSong.youtubeVideoId,
+      title: currentSong.title,
+      singer: currentSong.singer,
+      sessionId: roomCode,
+      performanceId: currentSong.id || currentSong.youtubeVideoId,
+      bounds,
+    });
+    setVideoError(null);
+  };
+
+  // Fecha a janela externa da Bridge se necessário
+  const handleCloseBridge = () => {
+    youtubeBridgeService.closeExternalVideo();
+  };
 
   // Manter ref sincronizada para uso dentro de timers e listeners
   useEffect(() => {
@@ -164,6 +221,11 @@ export const TvModePage: React.FC = () => {
     if (activeSong.id && endedSongIdRef.current === activeSong.id) return;
     if (activeSong.id) {
       endedSongIdRef.current = activeSong.id;
+    }
+
+    // Fecha janela externa do Karaokê Bridge se estiver ativa
+    if (youtubeBridgeService.isPlayingExternally()) {
+      youtubeBridgeService.closeExternalVideo();
     }
 
     // Cancela contagem anterior se houver
@@ -433,6 +495,21 @@ export const TvModePage: React.FC = () => {
 
         {/* Right Section: YouTube Direct Link + Premium + Mini QR Code */}
         <div className="flex items-center gap-2.5">
+          {bridgeState.isExternalPlaying ? (
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-brand-purple/60 bg-brand-purple/20 text-brand-purple-light text-xs font-bold shadow-neon-purple animate-pulse">
+              <Cast className="w-3.5 h-3.5 text-brand-pink" />
+              <span>Bridge Ativa</span>
+            </div>
+          ) : bridgeState.status !== 'not_installed' ? (
+            <div
+              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-status-success/40 bg-status-success/15 text-status-success text-xs font-bold"
+              title="Extensão Karaokê Bridge instalada e pronta para vídeos com restrição"
+            >
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              <span>Bridge Pronta</span>
+            </div>
+          ) : null}
+
           <button
             disabled={!currentSong}
             onClick={() => {
@@ -478,20 +555,75 @@ export const TvModePage: React.FC = () => {
       <main className="relative z-10 flex-1 my-2 md:my-3 flex items-center justify-center min-h-0 w-full">
         {currentSong ? (
           /* PLAYER 16:9 MAXIMIZADO OCUPANDO QUASE TODA A TELA */
-          <div className="relative w-full h-full max-h-[78vh] md:max-h-[82vh] rounded-2xl md:rounded-3xl border-2 border-brand-purple/50 bg-black overflow-hidden shadow-neon-purple flex items-center justify-center">
-            <iframe
-              key={currentSong.youtubeVideoId}
-              ref={iframeRef}
-              id="tv-youtube-iframe"
-              onLoad={sendIframeHandshake}
-              className="w-full h-full object-cover"
-              src={`https://www.youtube.com/embed/${currentSong.youtubeVideoId}?autoplay=1&controls=1&rel=0&enablejsapi=1&origin=${encodeURIComponent(
-                typeof window !== 'undefined' ? window.location.origin : ''
-              )}`}
-              title="YouTube Player"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-              allowFullScreen
-            />
+          <div
+            ref={stageContainerRef}
+            className="relative w-full h-full max-h-[78vh] md:max-h-[82vh] rounded-2xl md:rounded-3xl border-2 border-brand-purple/50 bg-black overflow-hidden shadow-neon-purple flex items-center justify-center"
+          >
+            {bridgeState.isExternalPlaying ? (
+              /* TELÃO DEDICADO QUANDO REPRODUZINDO VIA KARAOKÊ BRIDGE */
+              <div className="relative w-full h-full flex flex-col items-center justify-center p-6 md:p-12 text-center bg-gradient-to-b from-dark-base via-dark-surface to-dark-base overflow-hidden">
+                <div className="absolute w-[450px] h-[450px] bg-brand-purple/20 rounded-full blur-[130px] pointer-events-none animate-pulse-slow" />
+                <div className="absolute w-[350px] h-[350px] bg-red-600/15 rounded-full blur-[100px] pointer-events-none" />
+
+                <div className="relative z-10 max-w-2xl flex flex-col items-center space-y-5 animate-fade-in">
+                  <div className="inline-flex items-center gap-2.5 px-4 py-2 rounded-2xl bg-brand-purple/25 text-brand-purple-light border border-brand-purple/40 text-xs font-bold uppercase tracking-widest shadow-neon-purple">
+                    <Cast className="w-4 h-4 text-brand-pink animate-pulse" />
+                    <span>Reprodução via Karaokê Bridge (YouTube Premium)</span>
+                  </div>
+
+                  <div className="space-y-2">
+                    <h2 className="font-display font-black text-3xl md:text-5xl text-white tracking-tight">
+                      {currentSong.title}
+                    </h2>
+                    <p className="text-base md:text-xl font-bold bg-gradient-to-r from-brand-purple-light via-brand-pink to-brand-cyan-light bg-clip-text text-transparent">
+                      Cantor(a): {currentSong.singer} {currentSong.duet && `+ ${currentSong.duet}`}
+                    </p>
+                  </div>
+
+                  <div className="p-4 rounded-2xl bg-dark-base/85 border border-dark-border/80 backdrop-blur-md max-w-lg space-y-2 shadow-glass text-xs md:text-sm text-text-secondary leading-relaxed">
+                    <p className="flex items-center justify-center gap-2 font-semibold text-white">
+                      <span className="w-2.5 h-2.5 rounded-full bg-status-success animate-ping" />
+                      Janela Oficial do YouTube Ativa sobre o Telão
+                    </p>
+                    <p className="text-text-muted text-xs">
+                      Tocando sem anúncios via conta Premium. Ao término da apresentação, a janela fecha e a votação abre automaticamente!
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-3 pt-2">
+                    <button
+                      onClick={handleCloseBridge}
+                      className="px-4 py-2 rounded-xl border border-dark-border bg-dark-surface hover:bg-dark-elevated text-text-secondary hover:text-white text-xs font-bold transition-all"
+                    >
+                      Fechar Janela Externa
+                    </button>
+                    <button
+                      onClick={() => {
+                        handleCloseBridge();
+                        handleVideoEnded();
+                      }}
+                      className="px-4 py-2 rounded-xl bg-status-danger/20 border border-status-danger/40 text-status-danger hover:bg-status-danger/30 text-xs font-bold transition-all"
+                    >
+                      Finalizar e Abrir Avaliação ⏭
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <iframe
+                key={currentSong.youtubeVideoId}
+                ref={iframeRef}
+                id="tv-youtube-iframe"
+                onLoad={sendIframeHandshake}
+                className="w-full h-full object-cover"
+                src={`https://www.youtube.com/embed/${currentSong.youtubeVideoId}?autoplay=1&controls=1&rel=0&enablejsapi=1&origin=${encodeURIComponent(
+                  typeof window !== 'undefined' ? window.location.origin : ''
+                )}`}
+                title="YouTube Player"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+              />
+            )}
 
             {/* OVERLAY DE VÍDEO COM RESTRIÇÃO DE INCORPORAÇÃO (ERRO 150/101) */}
             {videoError?.isBlocked && (
@@ -502,32 +634,49 @@ export const TvModePage: React.FC = () => {
 
                 <div className="max-w-xl space-y-2">
                   <span className="px-3 py-1 rounded-full bg-status-danger/20 text-status-danger border border-status-danger/30 text-xs font-bold uppercase tracking-wider">
-                    Restrição do Proprietário do Vídeo
+                    Restrição do Proprietário do Vídeo (Erro 150/101)
                   </span>
                   <h3 className="font-display font-black text-2xl md:text-3xl text-white">
                     Reprodução Externa Bloqueada
                   </h3>
                   <p className="text-xs md:text-sm text-text-secondary leading-relaxed">
-                    A gravadora de <strong className="text-white">"{currentSong.title}"</strong> desativou a incorporação em outros sites, mas você pode reproduzir diretamente pelo YouTube em tela cheia com 1 clique ou trocar por outra versão de karaokê liberada!
+                    A gravadora de <strong className="text-white">"{currentSong.title}"</strong> desativou a incorporação em outros sites.
+                    {bridgeState.status !== 'not_installed' ? (
+                      <span className="block mt-1 text-brand-purple-light font-medium">
+                        ✨ Sua extensão <strong>Karaokê Bridge</strong> está conectada! Você pode abrir diretamente no YouTube Premium sobre este telão com sincronização total.
+                      </span>
+                    ) : (
+                      ' Você pode abrir no YouTube oficial ou trocar por outra versão liberada.'
+                    )}
                   </p>
                 </div>
 
-                <div className="flex flex-col sm:flex-row items-center gap-3 pt-2 w-full max-w-md">
-                  <button
-                    onClick={() => {
-                      if (currentSong?.youtubeVideoId) {
-                        window.open(
-                          `https://www.youtube.com/watch?v=${currentSong.youtubeVideoId}&autoplay=1`,
-                          '_blank',
-                          'noopener,noreferrer'
-                        );
-                      }
-                    }}
-                    className="w-full sm:flex-1 py-3 px-4 rounded-xl bg-gradient-to-r from-red-600 to-brand-pink text-white font-bold text-xs flex items-center justify-center gap-2 shadow-neon-pink hover:scale-105 active:scale-95 transition-all"
-                  >
-                    <ExternalLink className="w-4 h-4" />
-                    <span>Abrir no YouTube Agora</span>
-                  </button>
+                <div className="flex flex-col sm:flex-row items-center gap-3 pt-2 w-full max-w-lg">
+                  {bridgeState.status !== 'not_installed' ? (
+                    <button
+                      onClick={handleOpenViaBridge}
+                      className="w-full sm:flex-1 py-3 px-4 rounded-xl bg-gradient-to-r from-brand-purple via-brand-pink to-brand-cyan text-white font-bold text-xs flex items-center justify-center gap-2 shadow-neon-purple hover:scale-105 active:scale-95 transition-all"
+                    >
+                      <Cast className="w-4 h-4" />
+                      <span>Abrir no Karaokê Bridge (Recomendado)</span>
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => {
+                        if (currentSong?.youtubeVideoId) {
+                          window.open(
+                            `https://www.youtube.com/watch?v=${currentSong.youtubeVideoId}&autoplay=1`,
+                            '_blank',
+                            'noopener,noreferrer'
+                          );
+                        }
+                      }}
+                      className="w-full sm:flex-1 py-3 px-4 rounded-xl bg-gradient-to-r from-red-600 to-brand-pink text-white font-bold text-xs flex items-center justify-center gap-2 shadow-neon-pink hover:scale-105 active:scale-95 transition-all"
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                      <span>Abrir no YouTube Agora</span>
+                    </button>
+                  )}
 
                   <button
                     disabled={isSearchingAlt}

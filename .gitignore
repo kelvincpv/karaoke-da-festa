@@ -9,9 +9,10 @@ lerna-debug.log*
 
 # Node dependencies
 node_modules
-dist
+/dist
 dist-ssr
 *.local
+!chrome-extension/dist
 
 # Environment variables
 .env

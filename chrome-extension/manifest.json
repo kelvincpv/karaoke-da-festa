@@ -1,0 +1,41 @@
+{
+  "manifest_version": 3,
+  "name": "Karaokê Bridge — Karaokê da Festa",
+  "version": "1.0.0",
+  "description": "Ponte oficial entre o Karaokê da Festa e o YouTube Premium para reprodução de vídeos restritos com sincronização perfeita.",
+  "permissions": [
+    "windows",
+    "tabs",
+    "storage"
+  ],
+  "host_permissions": [
+    "https://*.youtube.com/*",
+    "https://karaoke.kelvinmoreira.com.br/*",
+    "http://localhost:*/*",
+    "http://127.0.0.1:*/*"
+  ],
+  "background": {
+    "service_worker": "dist/background/service-worker.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://*.youtube.com/watch*"],
+      "js": ["dist/content/youtube-observer.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://karaoke.kelvinmoreira.com.br/*",
+        "http://localhost:*/*",
+        "http://127.0.0.1:*/*"
+      ],
+      "js": ["dist/content/karaoke-connector.js"],
+      "run_at": "document_end"
+    }
+  ],
+  "action": {
+    "default_popup": "dist/popup/popup.html",
+    "default_title": "Karaokê Bridge"
+  }
+}
