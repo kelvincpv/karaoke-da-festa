@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { Sparkles, Mic, Flame, QrCode, ArrowLeft, Disc3, ExternalLink, Star } from 'lucide-react';
-import { SupabaseStatusBadge } from '../components/SupabaseStatusBadge';
-import { YOUTUBE_PREMIUM_LOGIN_URL } from '../lib/youtube';
+import { YOUTUBE_PREMIUM_LOGIN_URL, getYouTubeThumbnail } from '../lib/youtube';
 import { RoomRealtimeService, type PlaybackCommandPayload, type VotingCountdownPayload } from '../services/roomRealtimeService';
 
 interface FloatingReaction {
@@ -20,6 +19,7 @@ interface CurrentTvSong {
   duet?: string;
   nextSinger?: string;
   nextSong?: string;
+  nextVideoId?: string;
 }
 
 export const TvModePage: React.FC = () => {
@@ -34,6 +34,7 @@ export const TvModePage: React.FC = () => {
     song: string;
     nextSinger?: string;
     nextSong?: string;
+    nextVideoId?: string;
   } | null>(null);
 
   const roomCode = (code || 'FESTA1').toUpperCase();
@@ -46,10 +47,15 @@ export const TvModePage: React.FC = () => {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const countdownIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const currentSongRef = useRef<CurrentTvSong | null>(null);
+  const endedSongIdRef = useRef<string | null>(null);
 
   // Manter ref sincronizada para uso dentro de timers e listeners
   useEffect(() => {
     currentSongRef.current = currentSong;
+    // Se a música mudou, resetar o lock de encerramento da música anterior
+    if (currentSong?.id && endedSongIdRef.current !== currentSong.id) {
+      endedSongIdRef.current = null;
+    }
   }, [currentSong]);
 
   // Enviar comando para o iframe do YouTube via postMessage
@@ -66,14 +72,39 @@ export const TvModePage: React.FC = () => {
     }
   };
 
+  // Envia handshake para ativar o envio de eventos pelo YouTube IFrame
+  const sendIframeHandshake = () => {
+    if (iframeRef.current && iframeRef.current.contentWindow) {
+      try {
+        iframeRef.current.contentWindow.postMessage(
+          JSON.stringify({ event: 'listening', id: 1, channel: 'widget' }),
+          '*'
+        );
+        iframeRef.current.contentWindow.postMessage(
+          JSON.stringify({ event: 'command', func: 'addEventListener', args: ['onStateChange'] }),
+          '*'
+        );
+      } catch {
+        // ignore
+      }
+    }
+  };
+
   // Ciclo pós-show: 10 segundos de avaliação com barra de progresso e avanço automático
   const handleVideoEnded = () => {
     const activeSong = currentSongRef.current;
     if (!activeSong) return;
 
+    // Evita duplo disparo para a mesma música
+    if (activeSong.id && endedSongIdRef.current === activeSong.id) return;
+    if (activeSong.id) {
+      endedSongIdRef.current = activeSong.id;
+    }
+
     // Cancela contagem anterior se houver
     if (countdownIntervalRef.current) {
       clearInterval(countdownIntervalRef.current);
+      countdownIntervalRef.current = null;
     }
 
     let remaining = 10;
@@ -84,6 +115,7 @@ export const TvModePage: React.FC = () => {
       song: activeSong.title,
       nextSinger: activeSong.nextSinger,
       nextSong: activeSong.nextSong,
+      nextVideoId: activeSong.nextVideoId,
     };
 
     setCountdownState(countdownData);
@@ -133,13 +165,32 @@ export const TvModePage: React.FC = () => {
     }, 1000);
   };
 
-  // Listener de eventos do YouTube Player via postMessage (onStateChange: 0 = ENDED)
+  // Listener de eventos do YouTube Player via postMessage (onStateChange e infoDelivery)
   useEffect(() => {
+    // Envia handshake a cada 2.5s para garantir recepção de mensagens do YouTube
+    const handshakeInterval = setInterval(() => {
+      sendIframeHandshake();
+    }, 2500);
+
     const handleMessage = (e: MessageEvent) => {
       try {
         const data = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
-        if (data?.event === 'onStateChange' && data?.info === 0) {
-          // O vídeo terminou! Dispara o encerramento com 10s para votar
+        if (!data) return;
+
+        // 1. YouTube onStateChange com info = 0 (ENDED) ou infoDelivery com playerState = 0
+        const isEndedByState =
+          (data.event === 'onStateChange' && (data.info === 0 || data.info === '0')) ||
+          (data.event === 'infoDelivery' && data.info?.playerState === 0);
+
+        // 2. YouTube infoDelivery com currentTime próximo da duração total
+        const isNearEnd =
+          data.event === 'infoDelivery' &&
+          typeof data.info?.currentTime === 'number' &&
+          typeof data.info?.duration === 'number' &&
+          data.info.duration > 8 &&
+          data.info.currentTime >= data.info.duration - 1.2;
+
+        if (isEndedByState || isNearEnd) {
           handleVideoEnded();
         }
       } catch {
@@ -149,6 +200,7 @@ export const TvModePage: React.FC = () => {
 
     window.addEventListener('message', handleMessage);
     return () => {
+      clearInterval(handshakeInterval);
       window.removeEventListener('message', handleMessage);
       if (countdownIntervalRef.current) {
         clearInterval(countdownIntervalRef.current);
@@ -169,26 +221,18 @@ export const TvModePage: React.FC = () => {
       {
         onQueueChange: (syncedQueue) => {
           if (syncedQueue.length > 0) {
+            const first = syncedQueue[0];
             const next = syncedQueue[1];
-            setCurrentSong((prev) => {
-              if (prev) {
-                return {
-                  ...prev,
-                  nextSinger: next?.singer,
-                  nextSong: next?.title,
-                };
-              }
-              const first = syncedQueue[0];
-              return {
-                id: first.id,
-                youtubeVideoId: first.youtubeVideoId || '',
-                title: first.title,
-                artist: first.artist,
-                singer: first.singer,
-                duet: first.duet || undefined,
-                nextSinger: next?.singer,
-                nextSong: next?.title,
-              };
+            setCurrentSong({
+              id: first.id,
+              youtubeVideoId: first.youtubeVideoId || '',
+              title: first.title,
+              artist: first.artist,
+              singer: first.singer,
+              duet: first.duet || undefined,
+              nextSinger: next?.singer,
+              nextSong: next?.title,
+              nextVideoId: next?.youtubeVideoId,
             });
           } else {
             setCurrentSong(null);
@@ -205,6 +249,7 @@ export const TvModePage: React.FC = () => {
               duet: song.duet || undefined,
               nextSinger: prev?.nextSinger,
               nextSong: prev?.nextSong,
+              nextVideoId: prev?.nextVideoId,
             }));
           } else {
             setCurrentSong(null);
@@ -314,8 +359,6 @@ export const TvModePage: React.FC = () => {
             <ExternalLink className="w-3 h-3 opacity-70" />
           </a>
 
-          <SupabaseStatusBadge compact />
-
           <div className="flex items-center gap-2 bg-dark-surface/80 border border-dark-border px-3 py-1 rounded-xl">
             <QrCode className="w-4 h-4 text-brand-cyan-light" />
             <div className="text-left text-[10px]">
@@ -332,8 +375,10 @@ export const TvModePage: React.FC = () => {
           /* PLAYER 16:9 MAXIMIZADO OCUPANDO QUASE TODA A TELA */
           <div className="relative w-full h-full max-h-[78vh] md:max-h-[82vh] rounded-2xl md:rounded-3xl border-2 border-brand-purple/50 bg-black overflow-hidden shadow-neon-purple flex items-center justify-center">
             <iframe
+              key={currentSong.youtubeVideoId}
               ref={iframeRef}
               id="tv-youtube-iframe"
+              onLoad={sendIframeHandshake}
               className="w-full h-full object-cover"
               src={`https://www.youtube.com/embed/${currentSong.youtubeVideoId}?autoplay=1&controls=1&rel=0&enablejsapi=1&origin=${encodeURIComponent(
                 typeof window !== 'undefined' ? window.location.origin : ''
@@ -379,22 +424,53 @@ export const TvModePage: React.FC = () => {
                 </div>
 
                 {/* Preview da Próxima Música */}
-                <div className="mt-6 p-4 rounded-2xl bg-dark-surface/90 border border-dark-border text-center max-w-lg">
-                  <span className="text-xs font-bold uppercase text-brand-cyan-light tracking-wider block mb-1">
+                <div className="mt-5 p-4 rounded-2xl bg-dark-surface/90 border border-dark-border text-center max-w-lg w-full">
+                  <span className="text-xs font-bold uppercase text-brand-cyan-light tracking-wider block mb-2">
                     A Seguir:
                   </span>
-                  <p className="text-lg font-bold text-white">
-                    {countdownState.nextSinger ? (
-                      <>
-                        <span className="text-brand-purple-light">{countdownState.nextSinger}</span> cantando "{countdownState.nextSong}"
-                      </>
-                    ) : (
-                      'Palco Livre • Nenhum pedido na fila'
+                  <div className="flex items-center justify-center gap-3">
+                    {countdownState.nextVideoId && (
+                      <img
+                        src={getYouTubeThumbnail(countdownState.nextVideoId)}
+                        alt={countdownState.nextSong || ''}
+                        className="w-16 h-11 object-cover rounded-lg border border-dark-border shrink-0 shadow-md"
+                      />
                     )}
-                  </p>
-                  <p className="text-xs text-text-muted mt-0.5">
-                    Iniciando automaticamente quando o tempo acabar...
-                  </p>
+                    <div className="text-left">
+                      <p className="text-base font-bold text-white">
+                        {countdownState.nextSinger ? (
+                          <>
+                            <span className="text-brand-purple-light">{countdownState.nextSinger}</span>
+                            <span className="text-xs text-text-secondary block">
+                              "{countdownState.nextSong}"
+                            </span>
+                          </>
+                        ) : (
+                          'Palco Livre • Nenhum pedido na fila'
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      if (countdownIntervalRef.current) {
+                        clearInterval(countdownIntervalRef.current);
+                        countdownIntervalRef.current = null;
+                      }
+                      setCountdownState(null);
+                      serviceRef.current?.sendVotingCountdown({
+                        active: false,
+                        secondsRemaining: 0,
+                        songTitle: '',
+                        singerName: '',
+                      });
+                      serviceRef.current?.toggleVoting(false);
+                      serviceRef.current?.advanceToNextSong();
+                    }}
+                    className="mt-3 px-4 py-2 rounded-xl bg-gradient-to-r from-brand-purple to-brand-pink text-white font-bold text-xs uppercase tracking-wider shadow-neon-purple hover:scale-105 active:scale-95 transition-all"
+                  >
+                    Iniciar Próxima Música Agora ⏭
+                  </button>
                 </div>
               </div>
             )}
@@ -491,6 +567,13 @@ export const TvModePage: React.FC = () => {
 
         {/* A Seguir */}
         <div className="flex items-center gap-3">
+          {currentSong?.nextVideoId && (
+            <img
+              src={getYouTubeThumbnail(currentSong.nextVideoId)}
+              alt={currentSong.nextSong || ''}
+              className="w-12 h-9 rounded-lg object-cover border border-dark-border shrink-0 shadow-sm"
+            />
+          )}
           <div className="text-right">
             <span className="text-[10px] font-bold uppercase tracking-wider text-brand-cyan-light">
               A Seguir:

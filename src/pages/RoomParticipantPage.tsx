@@ -20,7 +20,6 @@ import {
   Clock,
 } from 'lucide-react';
 import { REACTION_EMOJIS, ReactionEmoji } from '../types/karaoke';
-import { SupabaseStatusBadge } from '../components/SupabaseStatusBadge';
 import {
   extractYouTubeVideoId,
   getYouTubeThumbnail,
@@ -73,6 +72,7 @@ export const RoomParticipantPage: React.FC = () => {
     singer: string;
     duet?: string;
     duration: string;
+    videoId?: string;
   } | null>(null);
   const [mySongs, setMySongs] = useState<Array<{ id: string; title: string; artist: string; position: number; videoId?: string }>>([]);
   const [upcomingQueue, setUpcomingQueue] = useState<Array<{ pos: string; title: string; artist: string; singer: string; duration: string; videoId?: string }>>([]);
@@ -133,6 +133,7 @@ export const RoomParticipantPage: React.FC = () => {
               singer: song.singer,
               duet: song.duet || undefined,
               duration: song.duration,
+              videoId: song.youtubeVideoId,
             });
           } else {
             setCurrentStageSong(null);
@@ -326,10 +327,8 @@ export const RoomParticipantPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Status Badge + User Nick Pill */}
+        {/* User Nick Pill */}
         <div className="flex items-center gap-2">
-          <SupabaseStatusBadge compact />
-
           <button
             onClick={() => {
               setTempNick(nickname);
@@ -396,6 +395,13 @@ export const RoomParticipantPage: React.FC = () => {
 
                 <div className="flex gap-3">
                   <div className="w-20 h-20 rounded-xl bg-dark-base border border-white/10 overflow-hidden shrink-0 relative flex items-center justify-center">
+                    {currentStageSong.videoId ? (
+                      <img
+                        src={getYouTubeThumbnail(currentStageSong.videoId)}
+                        alt={currentStageSong.title}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : null}
                     <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
                       <Play className="w-6 h-6 text-white drop-shadow" />
                     </div>
@@ -424,7 +430,7 @@ export const RoomParticipantPage: React.FC = () => {
                     onClick={() => setShowVotingModal(true)}
                     className="px-3 py-1.5 rounded-lg bg-brand-gold/20 text-brand-gold border border-brand-gold/40 text-xs font-bold hover:bg-brand-gold/30 transition-all flex items-center gap-1 shadow-neon-gold/20"
                   >
-                    <Star className="w-3.5 h-3.5 fill-brand-gold" /> Abrir Votação (Demo)
+                    <Star className="w-3.5 h-3.5 fill-brand-gold" /> Avaliar Cantoria ⭐
                   </button>
                 </div>
               </section>
@@ -452,7 +458,7 @@ export const RoomParticipantPage: React.FC = () => {
             {/* Minhas Músicas na Fila */}
             <section className="space-y-2">
               <h4 className="text-xs font-bold uppercase tracking-wider text-text-secondary flex items-center gap-1.5">
-                <Music className="w-4 h-4 text-brand-cyan" /> Minhas Músicas
+                <Music className="w-4 h-4 text-brand-cyan" /> Minhas Músicas ({mySongs.length})
               </h4>
 
               {mySongs.length === 0 ? (
@@ -469,15 +475,28 @@ export const RoomParticipantPage: React.FC = () => {
                 mySongs.map((song) => (
                   <div
                     key={song.id}
-                    className="p-3 rounded-xl border border-brand-cyan/30 bg-dark-surface/60 flex items-center justify-between"
+                    className="p-3 rounded-xl border border-brand-cyan/30 bg-dark-surface/60 flex items-center justify-between gap-3"
                   >
-                    <div>
-                      <p className="text-sm font-semibold text-text-primary">{song.title}</p>
-                      <p className="text-xs text-text-muted">
-                        {song.artist} • Posição #{song.position} na fila
-                      </p>
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                      {song.videoId ? (
+                        <img
+                          src={getYouTubeThumbnail(song.videoId)}
+                          alt={song.title}
+                          className="w-14 h-10 object-cover rounded-lg border border-dark-border shrink-0 shadow-sm"
+                        />
+                      ) : (
+                        <div className="w-14 h-10 rounded-lg bg-dark-base border border-dark-border flex items-center justify-center shrink-0">
+                          <Music className="w-4 h-4 text-brand-cyan-light" />
+                        </div>
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold text-text-primary truncate">{song.title}</p>
+                        <p className="text-xs text-text-muted truncate">
+                          {song.artist} • Posição #{song.position} na fila
+                        </p>
+                      </div>
                     </div>
-                    <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-brand-cyan/20 text-brand-cyan-light border border-brand-cyan/30">
+                    <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-brand-cyan/20 text-brand-cyan-light border border-brand-cyan/30 shrink-0">
                       Na Fila
                     </span>
                   </div>
@@ -504,16 +523,27 @@ export const RoomParticipantPage: React.FC = () => {
                       key={idx}
                       className="flex items-center gap-3 p-3 rounded-xl border border-dark-border bg-dark-surface/80 hover:bg-dark-elevated transition-colors"
                     >
-                      <span className="w-7 h-7 rounded-lg bg-dark-base flex items-center justify-center font-bold text-xs text-text-secondary">
+                      <span className="w-6 h-6 rounded-lg bg-dark-base flex items-center justify-center font-bold text-xs text-text-secondary shrink-0">
                         {item.pos}
                       </span>
+                      {item.videoId ? (
+                        <img
+                          src={getYouTubeThumbnail(item.videoId)}
+                          alt={item.title}
+                          className="w-14 h-10 object-cover rounded-lg border border-dark-border shrink-0 shadow-sm"
+                        />
+                      ) : (
+                        <div className="w-14 h-10 rounded-lg bg-dark-base border border-dark-border flex items-center justify-center shrink-0">
+                          <Music className="w-4 h-4 text-brand-purple-light" />
+                        </div>
+                      )}
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-semibold text-text-primary truncate">{item.title}</p>
                         <p className="text-xs text-text-muted truncate">
                           {item.artist} • <span className="text-brand-purple-light">{item.singer}</span>
                         </p>
                       </div>
-                      <span className="text-xs font-mono text-text-muted">{item.duration}</span>
+                      <span className="text-xs font-mono text-text-muted shrink-0">{item.duration}</span>
                     </div>
                   ))}
                 </div>
@@ -724,36 +754,55 @@ export const RoomParticipantPage: React.FC = () => {
               </div>
             )}
 
-            {/* RESULTADOS DA BUSCA AO VIVO NO YOUTUBE */}
+            {/* RESULTADOS DA BUSCA AO VIVO NO YOUTUBE (ESTILO YOUTUBE: THUMB GRANDE EM CIMA, TÍTULO COMPLETO EMBAIXO) */}
             {searchResults.length > 0 && (
-              <div className="space-y-2">
+              <div className="space-y-3">
                 <p className="text-xs font-bold uppercase tracking-wider text-text-secondary flex items-center justify-between">
                   <span>Resultados no YouTube ({searchResults.length})</span>
                   <span className="text-[10px] text-brand-purple-light font-normal">Ao vivo</span>
                 </p>
 
-                {searchResults.map((song) => (
-                  <div
-                    key={song.id}
-                    className="flex items-center justify-between p-3 rounded-xl border border-dark-border bg-dark-surface hover:border-brand-purple/50 transition-all gap-3"
-                  >
-                    <img
-                      src={song.thumbnailUrl}
-                      alt={song.title}
-                      className="w-16 h-12 rounded-lg object-cover shrink-0 border border-dark-border"
-                    />
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-semibold text-text-primary truncate">{song.title}</p>
-                      <p className="text-xs text-text-muted truncate">{song.channelTitle}</p>
-                    </div>
-                    <button
-                      onClick={() => handleAddSongToQueue(song.title, song.channelTitle, song.id)}
-                      className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-brand-purple to-brand-pink text-white text-xs font-bold flex items-center gap-1 shadow-neon-purple/40 hover:scale-105 active:scale-95 transition-all shrink-0"
+                <div className="grid grid-cols-1 gap-3.5">
+                  {searchResults.map((song) => (
+                    <div
+                      key={song.id}
+                      className="rounded-2xl border border-dark-border bg-dark-surface overflow-hidden hover:border-brand-purple/60 hover:shadow-neon-purple/20 transition-all flex flex-col group"
                     >
-                      <Plus className="w-3.5 h-3.5" /> Adicionar
-                    </button>
-                  </div>
-                ))}
+                      {/* Thumb grande em cima (proporção 16:9 aspecto de vídeo do YouTube) */}
+                      <div className="relative aspect-video w-full bg-dark-base overflow-hidden">
+                        <img
+                          src={song.thumbnailUrl}
+                          alt={song.title}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                          loading="lazy"
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-t from-dark-surface/90 via-transparent to-transparent pointer-events-none" />
+                        <span className="absolute bottom-2 right-2 px-2 py-0.5 rounded-md bg-black/85 backdrop-blur-sm text-[10px] font-mono text-white font-semibold shadow">
+                          Karaokê
+                        </span>
+                      </div>
+
+                      {/* Título embaixo completo, sem cortar */}
+                      <div className="p-3.5 flex flex-col justify-between flex-1 gap-2.5">
+                        <div className="space-y-1">
+                          <h4 className="text-sm font-bold text-white leading-snug break-words whitespace-normal">
+                            {song.title}
+                          </h4>
+                          <p className="text-xs text-brand-purple-light font-medium break-words">
+                            {song.channelTitle}
+                          </p>
+                        </div>
+
+                        <button
+                          onClick={() => handleAddSongToQueue(song.title, song.channelTitle, song.id)}
+                          className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-brand-purple to-brand-pink text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-neon-purple/40 hover:scale-[1.01] active:scale-[0.98] transition-all"
+                        >
+                          <Plus className="w-4 h-4" /> Cantar essa no Palco!
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
 

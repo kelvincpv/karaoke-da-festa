@@ -24,8 +24,7 @@ import {
   Plus,
   Key,
 } from 'lucide-react';
-import { SupabaseStatusBadge } from '../components/SupabaseStatusBadge';
-import { extractYouTubeVideoId, YOUTUBE_PREMIUM_LOGIN_URL } from '../lib/youtube';
+import { extractYouTubeVideoId, getYouTubeThumbnail, YOUTUBE_PREMIUM_LOGIN_URL } from '../lib/youtube';
 import { RoomRealtimeService } from '../services/roomRealtimeService';
 
 interface QueueItemLocal {
@@ -236,10 +235,8 @@ export const OrganizerPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Quick Actions Header com Status Badge */}
+        {/* Quick Actions Header */}
         <div className="flex items-center gap-2 flex-wrap">
-          <SupabaseStatusBadge />
-
           <button
             onClick={handleCopyLink}
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-dark-border bg-dark-elevated hover:border-brand-purple/50 text-xs font-semibold transition-all"
@@ -322,7 +319,14 @@ export const OrganizerPage: React.FC = () => {
             {/* Preview do Player ou Empty State */}
             {currentSong ? (
               <div className="aspect-video w-full rounded-xl bg-dark-base border border-dark-border overflow-hidden relative flex flex-col justify-end p-4">
-                <div className="absolute inset-0 bg-gradient-to-t from-dark-base via-transparent to-transparent" />
+                {currentSong.youtubeVideoId && (
+                  <img
+                    src={getYouTubeThumbnail(currentSong.youtubeVideoId)}
+                    alt={currentSong.title}
+                    className="absolute inset-0 w-full h-full object-cover opacity-50"
+                  />
+                )}
+                <div className="absolute inset-0 bg-gradient-to-t from-dark-base via-dark-base/40 to-transparent" />
                 <div className="relative z-10">
                   <p className="font-bold text-sm text-white">{currentSong.title}</p>
                   <p className="text-xs text-brand-purple-light">
@@ -604,11 +608,22 @@ export const OrganizerPage: React.FC = () => {
                     }`}
                   >
                     <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
                         <span className="w-6 h-6 rounded-md bg-dark-base flex items-center justify-center font-bold text-xs text-text-secondary shrink-0">
                           #{index + 1}
                         </span>
-                        <div className="min-w-0">
+                        {item.youtubeVideoId ? (
+                          <img
+                            src={getYouTubeThumbnail(item.youtubeVideoId)}
+                            alt={item.title}
+                            className="w-14 h-10 object-cover rounded-lg border border-dark-border shrink-0 shadow-sm"
+                          />
+                        ) : (
+                          <div className="w-14 h-10 rounded-lg bg-dark-base border border-dark-border flex items-center justify-center shrink-0">
+                            <Music className="w-4 h-4 text-brand-purple-light" />
+                          </div>
+                        )}
+                        <div className="min-w-0 flex-1">
                           <p className="text-sm font-semibold text-text-primary truncate">{item.title}</p>
                           <p className="text-xs text-text-muted truncate">
                             {item.artist} • <span className="text-brand-purple-light font-medium">{item.singer}</span>

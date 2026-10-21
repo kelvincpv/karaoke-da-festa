@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Mic, Tv, Shield, Sparkles, ArrowRight } from 'lucide-react';
-import { SupabaseStatusBadge } from '../components/SupabaseStatusBadge';
 
 export const HomePage: React.FC = () => {
   const [roomCode, setRoomCode] = useState('');
@@ -29,10 +28,6 @@ export const HomePage: React.FC = () => {
 
   return (
     <div className="relative min-h-screen flex flex-col items-center justify-center p-4 bg-dark-base overflow-hidden">
-      {/* Indicador de Status do Supabase */}
-      <div className="absolute top-4 right-4 z-20">
-        <SupabaseStatusBadge />
-      </div>
       {/* Background Neon Glows */}
       <div className="absolute top-1/4 -left-32 w-96 h-96 bg-brand-purple/20 rounded-full blur-3xl pointer-events-none animate-pulse-slow" />
       <div className="absolute bottom-1/4 -right-32 w-96 h-96 bg-brand-pink/20 rounded-full blur-3xl pointer-events-none animate-pulse-slow" />
