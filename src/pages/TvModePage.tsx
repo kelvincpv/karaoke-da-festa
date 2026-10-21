@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { Sparkles, Mic, Flame, QrCode, ArrowLeft, Disc3, ExternalLink } from 'lucide-react';
 import { SupabaseStatusBadge } from '../components/SupabaseStatusBadge';
 import { YOUTUBE_PREMIUM_LOGIN_URL } from '../lib/youtube';
+import { RoomRealtimeService } from '../services/roomRealtimeService';
 
 interface FloatingReaction {
   id: number;
@@ -23,17 +24,74 @@ interface CurrentTvSong {
 export const TvModePage: React.FC = () => {
   const { code } = useParams<{ code: string }>();
   // Reações reais (iniciam vazias; sem injeção periódica fake)
-  const [reactions] = useState<FloatingReaction[]>([]);
+  const [reactions, setReactions] = useState<FloatingReaction[]>([]);
   const [isVoting, setIsVoting] = useState(false);
-
-  // MVP Limpo: Palco inicia liberado (sem vídeo fake do Rick Astley)
-  const [currentSong] = useState<CurrentTvSong | null>(null);
-
+  const [currentSong, setCurrentSong] = useState<CurrentTvSong | null>(null);
   const roomCode = (code || 'FESTA1').toUpperCase();
   const joinUrl = `${window.location.origin}/room/${roomCode}`;
   const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(
     joinUrl
   )}&color=ffffff&bgcolor=090a10`;
+
+  // Sincronização em tempo real via Supabase Realtime
+  useEffect(() => {
+    const service = new RoomRealtimeService(
+      roomCode,
+      {
+        id: 'tv_' + Math.random().toString(36).substring(2, 9),
+        name: 'Telão TV',
+        isOrganizer: false,
+        joined: 'Agora',
+      },
+      {
+        onQueueChange: (syncedQueue) => {
+          if (syncedQueue.length > 0) {
+            setCurrentSong((prev) => {
+              if (prev) return prev;
+              const first = syncedQueue[0];
+              return {
+                youtubeVideoId: first.youtubeVideoId || '',
+                title: first.title,
+                artist: first.artist,
+                singer: first.singer,
+                duet: first.duet || undefined,
+              };
+            });
+          } else {
+            setCurrentSong(null);
+          }
+        },
+        onCurrentSongChange: (song) => {
+          if (song) {
+            setCurrentSong({
+              youtubeVideoId: song.youtubeVideoId || '',
+              title: song.title,
+              artist: song.artist,
+              singer: song.singer,
+              duet: song.duet || undefined,
+            });
+          } else {
+            setCurrentSong(null);
+          }
+        },
+        onVotingChange: (isOpen) => {
+          setIsVoting(isOpen);
+        },
+        onReaction: (reaction) => {
+          setReactions((prev) => [...prev.slice(-20), reaction]);
+          setTimeout(() => {
+            setReactions((prev) => prev.filter((r) => r.id !== reaction.id));
+          }, 2500);
+        },
+      }
+    );
+
+    service.connect();
+
+    return () => {
+      service.disconnect();
+    };
+  }, [roomCode]);
 
   return (
     <div className="relative w-screen h-screen bg-dark-base text-text-primary flex flex-col justify-between overflow-hidden select-none p-6">

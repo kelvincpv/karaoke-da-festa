@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import {
   Shield,
@@ -26,16 +26,18 @@ import {
 } from 'lucide-react';
 import { SupabaseStatusBadge } from '../components/SupabaseStatusBadge';
 import { extractYouTubeVideoId, YOUTUBE_PREMIUM_LOGIN_URL } from '../lib/youtube';
+import { RoomRealtimeService } from '../services/roomRealtimeService';
 
 interface QueueItemLocal {
   id: string;
   title: string;
   artist: string;
   singer: string;
-  duet: string | null;
-  isPriority: boolean;
+  duet?: string | null;
+  isPriority?: boolean;
   duration: string;
   youtubeVideoId?: string;
+  addedAt?: string;
 }
 
 interface ParticipantLocal {
@@ -53,9 +55,49 @@ export const OrganizerPage: React.FC = () => {
   const [autoPlay, setAutoPlay] = useState(false);
   const [allowDuets, setAllowDuets] = useState(true);
 
-  // MVP Limpo: Fila e Participantes iniciam 100% vazios
+  // MVP Limpo & Realtime: Fila e Participantes sincronizados via Supabase Realtime
   const [queue, setQueue] = useState<QueueItemLocal[]>([]);
   const [participants, setParticipants] = useState<ParticipantLocal[]>([]);
+  const serviceRef = useRef<RoomRealtimeService | null>(null);
+
+  // Inicialização do Supabase Realtime para a sala
+  useEffect(() => {
+    const roomCode = (code || 'FESTA1').toUpperCase();
+    const service = new RoomRealtimeService(
+      roomCode,
+      {
+        id: 'organizer_' + Math.random().toString(36).substring(2, 9),
+        name: 'Organizador',
+        isOrganizer: true,
+        joined: 'Agora',
+      },
+      {
+        onParticipantsChange: (syncedParticipants) => {
+          setParticipants(
+            syncedParticipants.map((p) => ({
+              id: p.id,
+              name: p.name,
+              isSinging: Boolean(p.isSinging),
+              joined: p.joined || 'Agora',
+            }))
+          );
+        },
+        onQueueChange: (syncedQueue) => {
+          setQueue(syncedQueue);
+        },
+        onVotingChange: (isOpen) => {
+          setVotingOpen(isOpen);
+        },
+      }
+    );
+
+    service.connect();
+    serviceRef.current = service;
+
+    return () => {
+      service.disconnect();
+    };
+  }, [code]);
 
   // Palco atual derivado da fila ou nulo
   const currentSong = queue[0] || null;
@@ -75,16 +117,21 @@ export const OrganizerPage: React.FC = () => {
     newQueue[index] = newQueue[targetIndex];
     newQueue[targetIndex] = temp;
     setQueue(newQueue);
+    serviceRef.current?.updateQueue(newQueue);
   };
 
   const togglePriority = (id: string) => {
-    setQueue((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, isPriority: !item.isPriority } : item))
+    const updated = queue.map((item) =>
+      item.id === id ? { ...item, isPriority: !item.isPriority } : item
     );
+    setQueue(updated);
+    serviceRef.current?.updateQueue(updated);
   };
 
   const removeQueueItem = (id: string) => {
-    setQueue((prev) => prev.filter((item) => item.id !== id));
+    const updated = queue.filter((item) => item.id !== id);
+    setQueue(updated);
+    serviceRef.current?.updateQueue(updated);
   };
 
   const kickParticipant = (id: string) => {
@@ -120,6 +167,7 @@ export const OrganizerPage: React.FC = () => {
       youtubeVideoId: videoId,
     };
     setQueue((prev) => [...prev, newItem]);
+    serviceRef.current?.addSongToQueue(newItem);
     setYoutubeUrlInput('');
     setManualSongTitle('');
     setManualSinger('');
@@ -292,7 +340,10 @@ export const OrganizerPage: React.FC = () => {
                 disabled={!currentSong}
                 onClick={() => {
                   if (queue.length > 0) {
-                    setQueue((prev) => prev.slice(1));
+                    const nextQueue = queue.slice(1);
+                    setQueue(nextQueue);
+                    serviceRef.current?.updateQueue(nextQueue);
+                    serviceRef.current?.setCurrentSong(nextQueue[0] || null);
                   }
                 }}
                 className="flex items-center justify-center gap-1.5 py-2.5 rounded-xl border border-status-danger/40 bg-status-danger/10 text-status-danger hover:bg-status-danger/20 text-xs font-semibold transition-all disabled:opacity-40"
@@ -320,7 +371,11 @@ export const OrganizerPage: React.FC = () => {
 
               <button
                 disabled={!currentSong}
-                onClick={() => setVotingOpen(!votingOpen)}
+                onClick={() => {
+                  const nextVal = !votingOpen;
+                  setVotingOpen(nextVal);
+                  serviceRef.current?.toggleVoting(nextVal);
+                }}
                 className={`w-full py-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all disabled:opacity-40 ${
                   votingOpen
                     ? 'border border-status-warning bg-status-warning/20 text-status-warning'

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import {
   Mic,
@@ -28,6 +28,7 @@ import {
   searchYouTubeKaraoke,
   type YouTubeSearchResultItem,
 } from '../lib/youtube';
+import { RoomRealtimeService } from '../services/roomRealtimeService';
 
 interface FloatingReactionInstance {
   id: number;
@@ -56,9 +57,9 @@ export const RoomParticipantPage: React.FC = () => {
   const [showVotingModal, setShowVotingModal] = useState(false);
   const [selectedRating, setSelectedRating] = useState<number | null>(null);
 
-  // MVP ZERADO: participantes, músicas e palco iniciam vazios
-  const [roomParticipants] = useState<string[]>([]);
-  const [currentStageSong] = useState<{
+  // Sincronização em Tempo Real (Supabase Realtime)
+  const [roomParticipants, setRoomParticipants] = useState<string[]>([]);
+  const [currentStageSong, setCurrentStageSong] = useState<{
     title: string;
     artist: string;
     singer: string;
@@ -68,6 +69,78 @@ export const RoomParticipantPage: React.FC = () => {
   const [mySongs, setMySongs] = useState<Array<{ id: string; title: string; artist: string; position: number; videoId?: string }>>([]);
   const [upcomingQueue, setUpcomingQueue] = useState<Array<{ pos: string; title: string; artist: string; singer: string; duration: string; videoId?: string }>>([]);
   const [rankings] = useState<Array<{ pos: number; name: string; stars: string; points: number }>>([]);
+  const serviceRef = useRef<RoomRealtimeService | null>(null);
+
+  // Conectar à sala do Supabase Realtime
+  useEffect(() => {
+    const roomCode = (code || 'FESTA1').toUpperCase();
+    const participantId =
+      localStorage.getItem('karaoke_participant_id') ||
+      ('user_' + Math.random().toString(36).substring(2, 9));
+    localStorage.setItem('karaoke_participant_id', participantId);
+
+    const service = new RoomRealtimeService(
+      roomCode,
+      {
+        id: participantId,
+        name: nickname,
+        isOrganizer: false,
+        joined: 'Agora',
+      },
+      {
+        onParticipantsChange: (syncedParticipants) => {
+          const others = syncedParticipants
+            .filter((p) => p.name !== nickname)
+            .map((p) => p.name);
+          setRoomParticipants(others);
+        },
+        onQueueChange: (syncedQueue) => {
+          setUpcomingQueue(
+            syncedQueue.map((item, idx) => ({
+              pos: `#${idx + 1}`,
+              title: item.title,
+              artist: item.artist,
+              singer: item.singer,
+              duration: item.duration,
+              videoId: item.youtubeVideoId,
+            }))
+          );
+        },
+        onCurrentSongChange: (song) => {
+          if (song) {
+            setCurrentStageSong({
+              title: song.title,
+              artist: song.artist,
+              singer: song.singer,
+              duet: song.duet || undefined,
+              duration: song.duration,
+            });
+          } else {
+            setCurrentStageSong(null);
+          }
+        },
+        onVotingChange: (isOpen) => {
+          setShowVotingModal(isOpen);
+        },
+        onReaction: (reaction) => {
+          setReactions((prev) => [
+            ...prev,
+            { id: reaction.id, emoji: reaction.emoji as any, left: reaction.xOffset },
+          ]);
+          setTimeout(() => {
+            setReactions((prev) => prev.filter((r) => r.id !== reaction.id));
+          }, 2500);
+        },
+      }
+    );
+
+    service.connect();
+    serviceRef.current = service;
+
+    return () => {
+      service.disconnect();
+    };
+  }, [code, nickname]);
 
   // Estados de Busca no YouTube
   const [searchResults, setSearchResults] = useState<YouTubeSearchResultItem[]>([]);
@@ -142,6 +215,19 @@ export const RoomParticipantPage: React.FC = () => {
     };
     setMySongs((prev) => [...prev, newMySong]);
     setUpcomingQueue((prev) => [...prev, newQueueItem]);
+
+    // Transmitir para o Telão e Organizador via Supabase Realtime
+    serviceRef.current?.addSongToQueue({
+      id: newMySong.id,
+      title,
+      artist,
+      singer: singerName,
+      duet: isDuet && selectedDuetPartner ? selectedDuetPartner : null,
+      duration: '04:00',
+      youtubeVideoId: videoId,
+      addedAt: new Date().toLocaleTimeString(),
+    });
+
     setSearchQuery('');
     alert(`"${title}" foi adicionada à fila com sucesso! 🎤✨`);
     setActiveTab('stage');
@@ -151,6 +237,9 @@ export const RoomParticipantPage: React.FC = () => {
     const id = Date.now() + Math.random();
     const left = Math.floor(Math.random() * 70) + 15;
     setReactions((prev) => [...prev, { id, emoji, left }]);
+
+    // Transmitir emoji para o Telão e outros participantes
+    serviceRef.current?.sendReaction(emoji, left);
 
     if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
       try {
