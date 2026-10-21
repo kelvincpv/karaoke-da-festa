@@ -13,8 +13,10 @@ import {
   Sparkles,
   ArrowLeft,
   X,
+  AlertCircle,
 } from 'lucide-react';
 import { REACTION_EMOJIS, ReactionEmoji } from '../types/karaoke';
+import { SupabaseStatusBadge } from '../components/SupabaseStatusBadge';
 
 interface FloatingReactionInstance {
   id: number;
@@ -34,23 +36,33 @@ export const RoomParticipantPage: React.FC = () => {
   // Reações Flutuantes Locais
   const [reactions, setReactions] = useState<FloatingReactionInstance[]>([]);
 
-  // Modal / Bottom sheet de dueto
+  // Modal / Opções de dueto
   const [isDuet, setIsDuet] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDuetPartner, setSelectedDuetPartner] = useState('');
 
-  // Simulação de Votação
+  // Votação interativa
   const [showVotingModal, setShowVotingModal] = useState(false);
   const [selectedRating, setSelectedRating] = useState<number | null>(null);
 
-  const mockParticipants = ['Paulinho', 'Maria Silva', 'Carlos', 'Beatriz', 'Lucas DJ'];
+  // MVP ZERADO: participantes, músicas e palco iniciam vazios
+  const [roomParticipants] = useState<string[]>([]);
+  const [currentStageSong] = useState<{
+    title: string;
+    artist: string;
+    singer: string;
+    duet?: string;
+    duration: string;
+  } | null>(null);
+  const [mySongs] = useState<Array<{ id: string; title: string; artist: string; position: number }>>([]);
+  const [upcomingQueue] = useState<Array<{ pos: string; title: string; artist: string; singer: string; duration: string }>>([]);
+  const [rankings] = useState<Array<{ pos: number; name: string; stars: string; points: number }>>([]);
 
   const sendReaction = (emoji: ReactionEmoji) => {
     const id = Date.now() + Math.random();
-    const left = Math.floor(Math.random() * 70) + 15; // 15% a 85% horizontal
+    const left = Math.floor(Math.random() * 70) + 15;
     setReactions((prev) => [...prev, { id, emoji, left }]);
 
-    // Haptic feedback se suportado
     if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
       try {
         navigator.vibrate(20);
@@ -101,17 +113,21 @@ export const RoomParticipantPage: React.FC = () => {
           </div>
         </div>
 
-        {/* User Nick Pill */}
-        <button
-          onClick={() => {
-            setTempNick(nickname);
-            setIsEditingNick(true);
-          }}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-brand-purple/30 bg-dark-elevated hover:border-brand-purple transition-all text-xs"
-        >
-          <span className="w-2 h-2 rounded-full bg-brand-cyan" />
-          <span className="font-semibold text-text-primary max-w-[100px] truncate">{nickname}</span>
-        </button>
+        {/* Status Badge + User Nick Pill */}
+        <div className="flex items-center gap-2">
+          <SupabaseStatusBadge compact />
+
+          <button
+            onClick={() => {
+              setTempNick(nickname);
+              setIsEditingNick(true);
+            }}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-brand-purple/30 bg-dark-elevated hover:border-brand-purple transition-all text-xs"
+          >
+            <span className="w-2 h-2 rounded-full bg-brand-cyan" />
+            <span className="font-semibold text-text-primary max-w-[80px] truncate">{nickname}</span>
+          </button>
+        </div>
       </header>
 
       {/* Main Tab Navigation */}
@@ -155,53 +171,70 @@ export const RoomParticipantPage: React.FC = () => {
         {/* TAB 1: PALCO & FILA */}
         {activeTab === 'stage' && (
           <div className="space-y-4">
-            {/* Banner: No Palco Agora */}
-            <section className="relative overflow-hidden rounded-2xl border-2 border-brand-purple/50 bg-gradient-to-b from-dark-surface to-dark-elevated p-4 shadow-neon-purple">
-              <div className="flex items-center justify-between text-xs font-semibold text-brand-pink uppercase tracking-wider mb-2">
-                <span className="flex items-center gap-1.5">
-                  <Flame className="w-4 h-4 animate-bounce" /> No Palco Agora
-                </span>
-                <span className="text-brand-cyan-light font-mono">02:14 / 04:30</span>
-              </div>
+            {/* Banner: No Palco Agora ou Empty State */}
+            {currentStageSong ? (
+              <section className="relative overflow-hidden rounded-2xl border-2 border-brand-purple/50 bg-gradient-to-b from-dark-surface to-dark-elevated p-4 shadow-neon-purple">
+                <div className="flex items-center justify-between text-xs font-semibold text-brand-pink uppercase tracking-wider mb-2">
+                  <span className="flex items-center gap-1.5">
+                    <Flame className="w-4 h-4 animate-bounce" /> No Palco Agora
+                  </span>
+                  <span className="text-brand-cyan-light font-mono">{currentStageSong.duration}</span>
+                </div>
 
-              <div className="flex gap-3">
-                <div className="w-20 h-20 rounded-xl bg-dark-base border border-white/10 overflow-hidden shrink-0 relative flex items-center justify-center">
-                  <img
-                    src="https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=200&auto=format&fit=crop&q=80"
-                    alt="Capa"
-                    className="w-full h-full object-cover"
-                  />
-                  <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-                    <Play className="w-6 h-6 text-white drop-shadow" />
+                <div className="flex gap-3">
+                  <div className="w-20 h-20 rounded-xl bg-dark-base border border-white/10 overflow-hidden shrink-0 relative flex items-center justify-center">
+                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                      <Play className="w-6 h-6 text-white drop-shadow" />
+                    </div>
+                  </div>
+
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-bold text-text-primary text-base truncate">{currentStageSong.title}</h3>
+                    <p className="text-xs text-text-secondary truncate">{currentStageSong.artist}</p>
+
+                    <div className="mt-2 flex items-center gap-1.5 flex-wrap">
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-brand-purple/20 text-brand-purple-light text-xs font-semibold border border-brand-purple/30">
+                        <Mic className="w-3 h-3" /> {currentStageSong.singer}
+                      </span>
+                      {currentStageSong.duet && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-brand-pink/20 text-brand-pink-light text-xs font-semibold border border-brand-pink/30">
+                          <Users className="w-3 h-3" /> + {currentStageSong.duet}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
 
-                <div className="flex-1 min-w-0">
-                  <h3 className="font-bold text-text-primary text-base truncate">Evidências</h3>
-                  <p className="text-xs text-text-secondary truncate">Chitãozinho & Xororó</p>
-
-                  <div className="mt-2 flex items-center gap-1.5 flex-wrap">
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-brand-purple/20 text-brand-purple-light text-xs font-semibold border border-brand-purple/30">
-                      <Mic className="w-3 h-3" /> Zé da Silva
-                    </span>
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-brand-pink/20 text-brand-pink-light text-xs font-semibold border border-brand-pink/30">
-                      <Users className="w-3 h-3" /> + Camila (Dueto)
-                    </span>
-                  </div>
+                <div className="mt-4 pt-3 border-t border-dark-border/80 flex items-center justify-between">
+                  <span className="text-xs text-text-muted">Gostando do show? Avalie:</span>
+                  <button
+                    onClick={() => setShowVotingModal(true)}
+                    className="px-3 py-1.5 rounded-lg bg-brand-gold/20 text-brand-gold border border-brand-gold/40 text-xs font-bold hover:bg-brand-gold/30 transition-all flex items-center gap-1 shadow-neon-gold/20"
+                  >
+                    <Star className="w-3.5 h-3.5 fill-brand-gold" /> Abrir Votação (Demo)
+                  </button>
                 </div>
-              </div>
-
-              {/* Botão de teste de votação */}
-              <div className="mt-4 pt-3 border-t border-dark-border/80 flex items-center justify-between">
-                <span className="text-xs text-text-muted">Gostando do show? Avalie:</span>
-                <button
-                  onClick={() => setShowVotingModal(true)}
-                  className="px-3 py-1.5 rounded-lg bg-brand-gold/20 text-brand-gold border border-brand-gold/40 text-xs font-bold hover:bg-brand-gold/30 transition-all flex items-center gap-1 shadow-neon-gold/20"
-                >
-                  <Star className="w-3.5 h-3.5 fill-brand-gold" /> Abrir Votação (Demo)
-                </button>
-              </div>
-            </section>
+              </section>
+            ) : (
+              /* Empty State Palco Liberado */
+              <section className="relative overflow-hidden rounded-2xl border border-dashed border-dark-border bg-dark-surface/60 p-6 text-center space-y-2">
+                <div className="w-14 h-14 rounded-full bg-brand-purple/20 text-brand-purple-light flex items-center justify-center mx-auto text-2xl shadow-neon-purple/20">
+                  🎤
+                </div>
+                <h3 className="font-display font-black text-lg text-white">Palco Liberado!</h3>
+                <p className="text-xs text-text-muted max-w-xs mx-auto">
+                  Ninguém cantando no momento. Seja o primeiro a pedir uma música!
+                </p>
+                <div className="pt-2">
+                  <button
+                    onClick={() => setActiveTab('search')}
+                    className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-brand-purple to-brand-pink text-white text-xs font-bold shadow-neon-purple hover:scale-105 active:scale-95 transition-all inline-flex items-center gap-1.5"
+                  >
+                    <Plus className="w-4 h-4" /> Escolher Música Agora
+                  </button>
+                </div>
+              </section>
+            )}
 
             {/* Minhas Músicas na Fila */}
             <section className="space-y-2">
@@ -209,49 +242,69 @@ export const RoomParticipantPage: React.FC = () => {
                 <Music className="w-4 h-4 text-brand-cyan" /> Minhas Músicas
               </h4>
 
-              <div className="p-3 rounded-xl border border-brand-cyan/30 bg-dark-surface/60 flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-semibold text-text-primary">Cheia de Manias</p>
-                  <p className="text-xs text-text-muted">Raça Negra • Posição: #3 na fila</p>
+              {mySongs.length === 0 ? (
+                <div className="p-4 rounded-xl border border-dashed border-dark-border bg-dark-surface/40 text-center">
+                  <p className="text-xs text-text-muted">Você ainda não adicionou nenhuma música à fila.</p>
+                  <button
+                    onClick={() => setActiveTab('search')}
+                    className="mt-2 text-xs text-brand-cyan-light font-semibold hover:underline inline-flex items-center gap-1"
+                  >
+                    <Search className="w-3.5 h-3.5" /> Buscar uma música no YouTube
+                  </button>
                 </div>
-                <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-brand-cyan/20 text-brand-cyan-light border border-brand-cyan/30">
-                  Em Breve
-                </span>
-              </div>
+              ) : (
+                mySongs.map((song) => (
+                  <div
+                    key={song.id}
+                    className="p-3 rounded-xl border border-brand-cyan/30 bg-dark-surface/60 flex items-center justify-between"
+                  >
+                    <div>
+                      <p className="text-sm font-semibold text-text-primary">{song.title}</p>
+                      <p className="text-xs text-text-muted">
+                        {song.artist} • Posição #{song.position} na fila
+                      </p>
+                    </div>
+                    <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-brand-cyan/20 text-brand-cyan-light border border-brand-cyan/30">
+                      Na Fila
+                    </span>
+                  </div>
+                ))
+              )}
             </section>
 
             {/* Próximos na Fila */}
             <section className="space-y-2">
               <div className="flex items-center justify-between">
                 <h4 className="text-xs font-bold uppercase tracking-wider text-text-secondary flex items-center gap-1.5">
-                  <Users className="w-4 h-4 text-brand-purple-light" /> Próximos na Fila (3)
+                  <Users className="w-4 h-4 text-brand-purple-light" /> Próximos na Fila ({upcomingQueue.length})
                 </h4>
-                <span className="text-xs text-text-muted">Tempo est.: ~12 min</span>
               </div>
 
-              <div className="space-y-2">
-                {[
-                  { pos: '#1', title: 'Bohemian Rhapsody', artist: 'Queen', singer: 'Lucas DJ', duration: '5:55' },
-                  { pos: '#2', title: 'Shallow', artist: 'Lady Gaga', singer: 'Maria & Paulinho', duration: '3:36' },
-                  { pos: '#3', title: 'Cheia de Manias', artist: 'Raça Negra', singer: nickname, duration: '3:40' },
-                ].map((item, idx) => (
-                  <div
-                    key={idx}
-                    className="flex items-center gap-3 p-3 rounded-xl border border-dark-border bg-dark-surface/80 hover:bg-dark-elevated transition-colors"
-                  >
-                    <span className="w-7 h-7 rounded-lg bg-dark-base flex items-center justify-center font-bold text-xs text-text-secondary">
-                      {item.pos}
-                    </span>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-text-primary truncate">{item.title}</p>
-                      <p className="text-xs text-text-muted truncate">
-                        {item.artist} • <span className="text-brand-purple-light">{item.singer}</span>
-                      </p>
+              {upcomingQueue.length === 0 ? (
+                <div className="p-4 rounded-xl border border-dashed border-dark-border bg-dark-surface/40 text-center text-xs text-text-muted">
+                  A fila de espera está vazia. O palco está te esperando!
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {upcomingQueue.map((item, idx) => (
+                    <div
+                      key={idx}
+                      className="flex items-center gap-3 p-3 rounded-xl border border-dark-border bg-dark-surface/80 hover:bg-dark-elevated transition-colors"
+                    >
+                      <span className="w-7 h-7 rounded-lg bg-dark-base flex items-center justify-center font-bold text-xs text-text-secondary">
+                        {item.pos}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-text-primary truncate">{item.title}</p>
+                        <p className="text-xs text-text-muted truncate">
+                          {item.artist} • <span className="text-brand-purple-light">{item.singer}</span>
+                        </p>
+                      </div>
+                      <span className="text-xs font-mono text-text-muted">{item.duration}</span>
                     </div>
-                    <span className="text-xs font-mono text-text-muted">{item.duration}</span>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </section>
           </div>
         )}
@@ -299,23 +352,30 @@ export const RoomParticipantPage: React.FC = () => {
                   <label className="text-xs font-semibold text-text-secondary block mb-1.5">
                     Escolha seu parceiro de palco:
                   </label>
-                  <select
-                    value={selectedDuetPartner}
-                    onChange={(e) => setSelectedDuetPartner(e.target.value)}
-                    className="w-full rounded-lg border border-dark-border bg-dark-base px-3 py-2 text-xs text-text-primary focus:border-brand-pink focus:outline-none"
-                  >
-                    <option value="">Selecione um participante...</option>
-                    {mockParticipants.map((p) => (
-                      <option key={p} value={p}>
-                        {p}
-                      </option>
-                    ))}
-                  </select>
+                  {roomParticipants.length === 0 ? (
+                    <div className="p-2.5 rounded-lg border border-dark-border bg-dark-base flex items-center gap-2 text-xs text-status-warning">
+                      <AlertCircle className="w-4 h-4 shrink-0" />
+                      <span>Nenhum outro participante na sala ainda. Aguarde a galera entrar!</span>
+                    </div>
+                  ) : (
+                    <select
+                      value={selectedDuetPartner}
+                      onChange={(e) => setSelectedDuetPartner(e.target.value)}
+                      className="w-full rounded-lg border border-dark-border bg-dark-base px-3 py-2 text-xs text-text-primary focus:border-brand-pink focus:outline-none"
+                    >
+                      <option value="">Selecione um participante...</option>
+                      {roomParticipants.map((p) => (
+                        <option key={p} value={p}>
+                          {p}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                 </div>
               )}
             </div>
 
-            {/* Resultados Mock do YouTube */}
+            {/* Sugestões Populares */}
             <div className="space-y-2">
               <p className="text-xs font-bold uppercase tracking-wider text-text-secondary">
                 Sugestões Populares de Karaokê
@@ -362,66 +422,49 @@ export const RoomParticipantPage: React.FC = () => {
               <p className="text-xs text-text-muted">Os maiores talentos da cantoria!</p>
             </div>
 
-            {/* Pódio Top 3 */}
-            <div className="grid grid-cols-3 gap-2 items-end pt-4 pb-2">
-              {/* 2º Lugar */}
-              <div className="flex flex-col items-center">
-                <span className="text-xl">🥈</span>
-                <div className="w-full bg-dark-surface border border-brand-cyan/40 rounded-t-xl p-2 text-center h-24 flex flex-col justify-end">
-                  <p className="text-xs font-bold text-text-primary truncate">Maria</p>
-                  <p className="text-[10px] text-brand-gold font-bold">4.8 ★</p>
-                  <span className="text-[10px] text-text-muted">2º Lugar</span>
+            {rankings.length === 0 ? (
+              /* Empty State para Ranking Vazio */
+              <div className="p-8 rounded-2xl border border-dashed border-dark-border bg-dark-surface/50 text-center space-y-3">
+                <div className="w-14 h-14 rounded-2xl bg-brand-gold/10 border border-brand-gold/30 flex items-center justify-center text-2xl mx-auto shadow-neon-gold/10">
+                  🏆
+                </div>
+                <h4 className="font-display font-bold text-sm text-white">Nenhum show avaliado ainda</h4>
+                <p className="text-xs text-text-muted max-w-xs mx-auto">
+                  As notas aparecerão aqui após as apresentações! Cante e ganhe até 5 estrelas da galera.
+                </p>
+                <div className="pt-2">
+                  <button
+                    onClick={() => setActiveTab('search')}
+                    className="px-4 py-2 rounded-xl bg-gradient-to-r from-brand-purple to-brand-pink text-white text-xs font-bold shadow-neon-purple transition-all"
+                  >
+                    Cantar Agora
+                  </button>
                 </div>
               </div>
-
-              {/* 1º Lugar */}
-              <div className="flex flex-col items-center">
-                <span className="text-2xl animate-bounce">👑</span>
-                <div className="w-full bg-gradient-to-b from-brand-purple/30 to-dark-surface border-2 border-brand-gold rounded-t-xl p-2 text-center h-32 flex flex-col justify-end shadow-neon-gold">
-                  <span className="text-lg">🥇</span>
-                  <p className="text-xs font-black text-white truncate">Paulinho</p>
-                  <p className="text-xs text-brand-gold font-black">5.0 ★</p>
-                  <span className="text-[10px] text-brand-gold uppercase font-bold">Campeão</span>
-                </div>
-              </div>
-
-              {/* 3º Lugar */}
-              <div className="flex flex-col items-center">
-                <span className="text-xl">🥉</span>
-                <div className="w-full bg-dark-surface border border-brand-pink/40 rounded-t-xl p-2 text-center h-20 flex flex-col justify-end">
-                  <p className="text-xs font-bold text-text-primary truncate">Carlos</p>
-                  <p className="text-[10px] text-brand-gold font-bold">4.6 ★</p>
-                  <span className="text-[10px] text-text-muted">3º Lugar</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Lista restante */}
-            <div className="space-y-2">
-              {[
-                { pos: 4, name: 'Beatriz', stars: '4.4', points: 480 },
-                { pos: 5, name: 'Lucas DJ', stars: '4.2', points: 420 },
-              ].map((item) => (
-                <div
-                  key={item.pos}
-                  className="flex items-center justify-between p-3 rounded-xl border border-dark-border bg-dark-surface"
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs font-bold text-text-muted">#{item.pos}</span>
-                    <span className="text-sm font-semibold text-text-primary">{item.name}</span>
+            ) : (
+              <div className="space-y-2">
+                {rankings.map((item) => (
+                  <div
+                    key={item.pos}
+                    className="flex items-center justify-between p-3 rounded-xl border border-dark-border bg-dark-surface"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs font-bold text-text-muted">#{item.pos}</span>
+                      <span className="text-sm font-semibold text-text-primary">{item.name}</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs">
+                      <span className="text-brand-gold font-bold">{item.stars} ★</span>
+                      <span className="text-text-muted">({item.points} pts)</span>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2 text-xs">
-                    <span className="text-brand-gold font-bold">{item.stars} ★</span>
-                    <span className="text-text-muted">({item.points} pts)</span>
-                  </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </main>
 
-      {/* REAÇÕES FLUTUANTES (Partículas animadas) */}
+      {/* REAÇÕES FLUTUANTES (Partículas animadas locais) */}
       <div className="fixed inset-0 pointer-events-none z-40 overflow-hidden">
         {reactions.map((r) => (
           <div
@@ -511,10 +554,10 @@ export const RoomParticipantPage: React.FC = () => {
 
             <div>
               <h3 className="font-display font-black text-xl text-white">O que achou do show?</h3>
-              <p className="text-xs text-text-secondary mt-1">Cantor: Zé da Silva com "Evidências"</p>
+              <p className="text-xs text-text-secondary mt-1">Avalie a performance no palco!</p>
             </div>
 
-            {/* Estrelas Gigantes */}
+            {/* Estrelas */}
             <div className="flex justify-center gap-2 py-2">
               {[1, 2, 3, 4, 5].map((star) => (
                 <button
