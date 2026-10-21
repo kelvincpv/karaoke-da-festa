@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import {
   Mic,
@@ -14,10 +14,20 @@ import {
   ArrowLeft,
   X,
   AlertCircle,
+  Loader2,
+  Key,
+  Check,
 } from 'lucide-react';
 import { REACTION_EMOJIS, ReactionEmoji } from '../types/karaoke';
 import { SupabaseStatusBadge } from '../components/SupabaseStatusBadge';
-import { extractYouTubeVideoId, getYouTubeThumbnail } from '../lib/youtube';
+import {
+  extractYouTubeVideoId,
+  getYouTubeThumbnail,
+  getYouTubeApiKey,
+  setYouTubeApiKey,
+  searchYouTubeKaraoke,
+  type YouTubeSearchResultItem,
+} from '../lib/youtube';
 
 interface FloatingReactionInstance {
   id: number;
@@ -58,6 +68,59 @@ export const RoomParticipantPage: React.FC = () => {
   const [mySongs, setMySongs] = useState<Array<{ id: string; title: string; artist: string; position: number; videoId?: string }>>([]);
   const [upcomingQueue, setUpcomingQueue] = useState<Array<{ pos: string; title: string; artist: string; singer: string; duration: string; videoId?: string }>>([]);
   const [rankings] = useState<Array<{ pos: number; name: string; stars: string; points: number }>>([]);
+
+  // Estados de Busca no YouTube
+  const [searchResults, setSearchResults] = useState<YouTubeSearchResultItem[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [hasApiKey, setHasApiKey] = useState(() => Boolean(getYouTubeApiKey()));
+  const [showKeyModal, setShowKeyModal] = useState(false);
+  const [tempApiKey, setTempApiKey] = useState(() => getYouTubeApiKey());
+
+  // Debounced search no YouTube
+  useEffect(() => {
+    if (!searchQuery.trim() || searchQuery.trim().length < 2) {
+      setSearchResults([]);
+      setSearchError(null);
+      setIsSearching(false);
+      return;
+    }
+
+    if (extractYouTubeVideoId(searchQuery)) {
+      setSearchResults([]);
+      setSearchError(null);
+      setIsSearching(false);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setIsSearching(true);
+      setSearchError(null);
+      const res = await searchYouTubeKaraoke(searchQuery.trim());
+      setHasApiKey(res.hasApiKey);
+      setSearchResults(res.items);
+      if (res.error) {
+        setSearchError(res.error);
+      }
+      setIsSearching(false);
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  const handleSaveUserKey = (e: React.FormEvent) => {
+    e.preventDefault();
+    setYouTubeApiKey(tempApiKey.trim());
+    setHasApiKey(Boolean(tempApiKey.trim()));
+    setShowKeyModal(false);
+    alert('Chave do YouTube salva com sucesso neste dispositivo!');
+    if (searchQuery.trim()) {
+      searchYouTubeKaraoke(searchQuery.trim(), tempApiKey.trim()).then((res) => {
+        setSearchResults(res.items);
+        if (res.error) setSearchError(res.error);
+      });
+    }
+  };
 
   const handleAddSongToQueue = (title: string, artist: string, videoId: string) => {
     const newPosition = upcomingQueue.length + 1;
@@ -434,37 +497,140 @@ export const RoomParticipantPage: React.FC = () => {
               )}
             </div>
 
-            {/* Sugestões Populares */}
-            <div className="space-y-2">
-              <p className="text-xs font-bold uppercase tracking-wider text-text-secondary">
-                Sugestões Populares de Karaokê
-              </p>
+            {/* STATUS / ERRO / LOADER DE BUSCA DO YOUTUBE */}
+            {isSearching && (
+              <div className="flex items-center justify-center gap-2 py-6 text-brand-purple-light text-xs font-semibold">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>Buscando no YouTube...</span>
+              </div>
+            )}
 
-              {[
-                { title: 'Evidências (Karaokê)', channel: 'Karaokê Brasil', dur: '4:30', id: 'evidencias' },
-                { title: 'Menina Veneno (Karaokê)', channel: 'Top Karaokê', dur: '3:50', id: 'veneno' },
-                { title: 'Temporal de Amor (Karaokê)', channel: 'SertanejoKaraoke', dur: '4:10', id: 'temporal' },
-                { title: 'Rolling in the Deep (Karaoke)', channel: 'Sing King', dur: '3:48', id: 'adele' },
-              ].map((song) => (
-                <div
-                  key={song.id}
-                  className="flex items-center justify-between p-3 rounded-xl border border-dark-border bg-dark-surface hover:border-brand-purple/50 transition-all"
-                >
-                  <div className="min-w-0 flex-1 mr-3">
-                    <p className="text-sm font-semibold text-text-primary truncate">{song.title}</p>
-                    <p className="text-xs text-text-muted">
-                      {song.channel} • {song.dur}
-                    </p>
-                  </div>
+            {searchError && (
+              <div className="p-3.5 rounded-xl bg-status-danger/15 border border-status-danger/40 text-status-danger text-xs space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold flex items-center gap-1.5 text-white">
+                    <AlertCircle className="w-4 h-4 text-status-danger" /> Resposta da YouTube API:
+                  </span>
                   <button
-                    onClick={() => handleAddSongToQueue(song.title, song.channel, song.id)}
-                    className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-brand-purple to-brand-pink text-white text-xs font-bold flex items-center gap-1 shadow-neon-purple/40 hover:scale-105 active:scale-95 transition-all"
+                    onClick={() => {
+                      setTempApiKey(getYouTubeApiKey());
+                      setShowKeyModal(true);
+                    }}
+                    className="px-2 py-0.5 rounded-lg border border-status-danger/40 bg-status-danger/20 hover:bg-status-danger/30 text-white text-[11px] font-bold"
                   >
-                    <Plus className="w-3.5 h-3.5" /> Adicionar
+                    Trocar Chave
                   </button>
                 </div>
-              ))}
-            </div>
+                <p className="text-[11px] text-text-primary break-words font-mono bg-dark-base/80 p-2 rounded border border-status-danger/30">
+                  {searchError}
+                </p>
+                <p className="text-[11px] text-text-muted leading-relaxed">
+                  💡 <strong>Dica:</strong> Se a mensagem disser que a API está desativada, abra o Google Cloud Console e clique em <em>Enable YouTube Data API v3</em>. Ou cole o link direto do vídeo acima!
+                </p>
+              </div>
+            )}
+
+            {!hasApiKey && !searchError && searchQuery.trim().length > 1 && (
+              <div className="p-3.5 rounded-xl bg-brand-gold/15 border border-brand-gold/40 text-brand-gold text-xs space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold flex items-center gap-1.5 text-white">
+                    <Key className="w-4 h-4 text-brand-gold" /> Chave de API Não Detectada
+                  </span>
+                  <button
+                    onClick={() => {
+                      setTempApiKey(getYouTubeApiKey());
+                      setShowKeyModal(true);
+                    }}
+                    className="px-2.5 py-1 rounded-lg bg-brand-gold/20 hover:bg-brand-gold/30 border border-brand-gold/50 text-white font-bold text-[11px]"
+                  >
+                    Inserir Chave Aqui
+                  </button>
+                </div>
+                <p className="text-[11px] text-text-secondary leading-relaxed">
+                  A variável de ambiente ainda não foi carregada no navegador. Você pode inserir sua <strong>VITE_YOUTUBE_API_KEY</strong> aqui para ativar agora mesmo, ou colar o link direto de qualquer vídeo do YouTube acima.
+                </p>
+              </div>
+            )}
+
+            {/* RESULTADOS DA BUSCA AO VIVO NO YOUTUBE */}
+            {searchResults.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-xs font-bold uppercase tracking-wider text-text-secondary flex items-center justify-between">
+                  <span>Resultados no YouTube ({searchResults.length})</span>
+                  <span className="text-[10px] text-brand-purple-light font-normal">Ao vivo</span>
+                </p>
+
+                {searchResults.map((song) => (
+                  <div
+                    key={song.id}
+                    className="flex items-center justify-between p-3 rounded-xl border border-dark-border bg-dark-surface hover:border-brand-purple/50 transition-all gap-3"
+                  >
+                    <img
+                      src={song.thumbnailUrl}
+                      alt={song.title}
+                      className="w-16 h-12 rounded-lg object-cover shrink-0 border border-dark-border"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold text-text-primary truncate">{song.title}</p>
+                      <p className="text-xs text-text-muted truncate">{song.channelTitle}</p>
+                    </div>
+                    <button
+                      onClick={() => handleAddSongToQueue(song.title, song.channelTitle, song.id)}
+                      className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-brand-purple to-brand-pink text-white text-xs font-bold flex items-center gap-1 shadow-neon-purple/40 hover:scale-105 active:scale-95 transition-all shrink-0"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> Adicionar
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Sugestões Populares */}
+            {searchResults.length === 0 && !isSearching && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-bold uppercase tracking-wider text-text-secondary">
+                    Sugestões Populares de Karaokê
+                  </p>
+                  {!hasApiKey && (
+                    <button
+                      onClick={() => {
+                        setTempApiKey(getYouTubeApiKey());
+                        setShowKeyModal(true);
+                      }}
+                      className="text-[11px] text-brand-purple-light hover:underline flex items-center gap-1"
+                    >
+                      <Key className="w-3 h-3" /> Configurar API Key
+                    </button>
+                  )}
+                </div>
+
+                {[
+                  { title: 'Evidências (Karaokê)', channel: 'Karaokê Brasil', dur: '4:30', id: 'evidencias' },
+                  { title: 'Menina Veneno (Karaokê)', channel: 'Top Karaokê', dur: '3:50', id: 'veneno' },
+                  { title: 'Temporal de Amor (Karaokê)', channel: 'SertanejoKaraoke', dur: '4:10', id: 'temporal' },
+                  { title: 'Rolling in the Deep (Karaoke)', channel: 'Sing King', dur: '3:48', id: 'adele' },
+                ].map((song) => (
+                  <div
+                    key={song.id}
+                    className="flex items-center justify-between p-3 rounded-xl border border-dark-border bg-dark-surface hover:border-brand-purple/50 transition-all"
+                  >
+                    <div className="min-w-0 flex-1 mr-3">
+                      <p className="text-sm font-semibold text-text-primary truncate">{song.title}</p>
+                      <p className="text-xs text-text-muted">
+                        {song.channel} • {song.dur}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => handleAddSongToQueue(song.title, song.channel, song.id)}
+                      className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-brand-purple to-brand-pink text-white text-xs font-bold flex items-center gap-1 shadow-neon-purple/40 hover:scale-105 active:scale-95 transition-all"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> Adicionar
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -652,6 +818,61 @@ export const RoomParticipantPage: React.FC = () => {
             >
               Confirmar Meu Voto
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL CONFIGURAÇÃO DIRETA DE API KEY NO CELULAR */}
+      {showKeyModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-4 animate-fadeIn">
+          <div className="w-full max-w-sm rounded-2xl border border-brand-purple/40 bg-dark-surface p-6 shadow-glass relative text-left space-y-4">
+            <button
+              onClick={() => setShowKeyModal(false)}
+              className="absolute top-4 right-4 text-text-muted hover:text-white"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-2">
+              <div className="p-2 rounded-xl bg-brand-purple/20 text-brand-purple-light border border-brand-purple/30">
+                <Key className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-display font-bold text-sm text-white">Chave YouTube Data API v3</h3>
+                <p className="text-[11px] text-text-muted">Ativação instantânea de busca</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-text-secondary leading-relaxed">
+              Cole sua chave da <strong>YouTube Data API v3</strong> abaixo para ativar a pesquisa de músicas em tempo real neste dispositivo:
+            </p>
+
+            <form onSubmit={handleSaveUserKey} className="space-y-3">
+              <input
+                type="text"
+                value={tempApiKey}
+                onChange={(e) => setTempApiKey(e.target.value)}
+                placeholder="AIzaSy..."
+                className="w-full rounded-xl border border-dark-border bg-dark-base px-3.5 py-2.5 text-xs text-white placeholder:text-text-muted focus:border-brand-purple focus:outline-none"
+                required
+              />
+
+              <div className="flex justify-end gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setShowKeyModal(false)}
+                  className="px-3 py-1.5 rounded-lg text-xs text-text-muted hover:text-white"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-1.5 rounded-lg bg-gradient-to-r from-brand-purple to-brand-pink text-white text-xs font-bold shadow-neon-purple flex items-center gap-1.5"
+                >
+                  <Check className="w-3.5 h-3.5" /> Salvar Chave
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

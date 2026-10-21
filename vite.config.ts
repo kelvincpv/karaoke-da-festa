@@ -5,7 +5,7 @@ import path from 'path';
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
-  envPrefix: ['VITE_', 'SUPABASE_'],
+  envPrefix: ['VITE_', 'SUPABASE_', 'YOUTUBE_'],
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
