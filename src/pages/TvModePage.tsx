@@ -13,6 +13,7 @@ import {
   AlertTriangle,
   Cast,
   CheckCircle2,
+  Trophy,
 } from 'lucide-react';
 import {
   YOUTUBE_PREMIUM_LOGIN_URL,
@@ -23,6 +24,7 @@ import {
   RoomRealtimeService,
   type PlaybackCommandPayload,
   type VotingCountdownPayload,
+  type RankingItemSync,
 } from '../services/roomRealtimeService';
 import {
   youtubeBridgeService,
@@ -67,6 +69,14 @@ export const TvModePage: React.FC = () => {
   } | null>(null);
   const [isSearchingAlt, setIsSearchingAlt] = useState(false);
   const [bridgeState, setBridgeState] = useState<BridgeState>(youtubeBridgeService.getState());
+  const [rankings, setRankings] = useState<RankingItemSync[]>(() => {
+    try {
+      const saved = localStorage.getItem(`karaoke_rankings_${(code || 'FESTA1').toUpperCase()}`);
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
 
   const roomCode = (code || 'FESTA1').toUpperCase();
   const joinUrl = `${window.location.origin}/room/${roomCode}`;
@@ -438,6 +448,9 @@ export const TvModePage: React.FC = () => {
             setReactions((prev) => prev.filter((r) => r.id !== reaction.id));
           }, 2500);
         },
+        onRankingsChange: (newRankings) => {
+          setRankings(newRankings);
+        },
       }
     );
 
@@ -734,6 +747,24 @@ export const TvModePage: React.FC = () => {
                   </div>
                 </div>
 
+                {/* Ranking Parcial / Top 3 da Festa em Tempo Real */}
+                {rankings.length > 0 && (
+                  <div className="mt-4 px-4 py-2.5 rounded-2xl bg-dark-surface/90 border border-brand-gold/40 flex items-center justify-center gap-3 text-xs max-w-lg w-full shadow-neon-gold/20">
+                    <span className="font-bold text-brand-gold uppercase tracking-wider flex items-center gap-1 shrink-0">
+                      <Trophy className="w-3.5 h-3.5" /> Líderes:
+                    </span>
+                    <div className="flex items-center gap-3 overflow-hidden truncate">
+                      {rankings.slice(0, 3).map((r) => (
+                        <span key={r.pos} className="flex items-center gap-1 font-bold text-white shrink-0">
+                          <span>{r.pos === 1 ? '🥇' : r.pos === 2 ? '🥈' : '🥉'}</span>
+                          <span>{r.name}</span>
+                          <span className="text-brand-gold font-normal">({r.stars}★)</span>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {/* Preview da Próxima Música */}
                 <div className="mt-5 p-4 rounded-2xl bg-dark-surface/90 border border-dark-border text-center max-w-lg w-full">
                   <span className="text-xs font-bold uppercase text-brand-cyan-light tracking-wider block mb-2">
@@ -826,6 +857,30 @@ export const TvModePage: React.FC = () => {
                 />
               </div>
             </div>
+
+            {/* Top 3 Líderes do Karaokê no Telão */}
+            {rankings.length > 0 && (
+              <div className="w-full max-w-lg p-3 rounded-2xl bg-dark-base/80 border border-brand-gold/40 shadow-neon-gold/15">
+                <div className="flex items-center justify-between text-xs font-bold text-brand-gold uppercase tracking-wider mb-2">
+                  <span className="flex items-center gap-1.5">
+                    <Trophy className="w-3.5 h-3.5" /> Hall da Fama da Festa
+                  </span>
+                  <span className="text-[10px] text-text-muted">Top 3 Cantorias</span>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  {rankings.slice(0, 3).map((r) => (
+                    <div
+                      key={r.pos}
+                      className="p-2 rounded-xl bg-dark-surface/90 border border-dark-border text-center flex flex-col items-center"
+                    >
+                      <span className="text-base mb-0.5">{r.pos === 1 ? '🥇' : r.pos === 2 ? '🥈' : '🥉'}</span>
+                      <p className="font-bold text-xs text-white truncate w-full">{r.name}</p>
+                      <p className="text-[11px] font-bold text-brand-gold mt-0.5">{r.stars} ★</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Passos rápidos */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3 w-full pt-1 text-xs">

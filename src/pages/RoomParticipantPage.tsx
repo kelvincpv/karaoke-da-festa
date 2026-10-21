@@ -28,7 +28,9 @@ import {
   searchYouTubeKaraoke,
   type YouTubeSearchResultItem,
 } from '../lib/youtube';
-import { RoomRealtimeService } from '../services/roomRealtimeService';
+import { RoomRealtimeService, type RankingItemSync } from '../services/roomRealtimeService';
+import { generateUUID } from '../lib/utils';
+import confetti from 'canvas-confetti';
 
 interface FloatingReactionInstance {
   id: number;
@@ -38,6 +40,21 @@ interface FloatingReactionInstance {
 
 export const RoomParticipantPage: React.FC = () => {
   const { code } = useParams<{ code: string }>();
+  const roomCode = (code || 'FESTA1').toUpperCase();
+
+  // Entrada Obrigatória com Nome / Apelido ao escanear o QR Code
+  const [hasJoined, setHasJoined] = useState<boolean>(() => {
+    const sessionJoined = sessionStorage.getItem(`karaoke_joined_${(code || 'FESTA1').toUpperCase()}`);
+    const savedNick = localStorage.getItem('karaoke_nickname');
+    return Boolean(sessionJoined && savedNick && savedNick.trim() !== '' && savedNick.trim() !== 'Convidado');
+  });
+  const [joinNickInput, setJoinNickInput] = useState(() => {
+    const saved = localStorage.getItem('karaoke_nickname');
+    return saved && saved !== 'Convidado' ? saved : '';
+  });
+  const [selectedAvatar, setSelectedAvatar] = useState('🎤');
+  const [joinError, setJoinError] = useState<string | null>(null);
+
   const [activeTab, setActiveTab] = useState<'stage' | 'search' | 'ranking'>('stage');
   const [nickname, setNickname] = useState(
     () => localStorage.getItem('karaoke_nickname') || 'Convidado'
@@ -76,12 +93,20 @@ export const RoomParticipantPage: React.FC = () => {
   } | null>(null);
   const [mySongs, setMySongs] = useState<Array<{ id: string; title: string; artist: string; position: number; videoId?: string }>>([]);
   const [upcomingQueue, setUpcomingQueue] = useState<Array<{ pos: string; title: string; artist: string; singer: string; duration: string; videoId?: string }>>([]);
-  const [rankings] = useState<Array<{ pos: number; name: string; stars: string; points: number }>>([]);
+  const [rankings, setRankings] = useState<RankingItemSync[]>(() => {
+    try {
+      const saved = localStorage.getItem(`karaoke_rankings_${roomCode}`);
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
   const serviceRef = useRef<RoomRealtimeService | null>(null);
 
-  // Conectar à sala do Supabase Realtime
+  // Conectar à sala do Supabase Realtime (apenas após o participante confirmar o nome)
   useEffect(() => {
-    const roomCode = (code || 'FESTA1').toUpperCase();
+    if (!hasJoined) return;
+
     const participantId =
       localStorage.getItem('karaoke_participant_id') ||
       ('user_' + Math.random().toString(36).substring(2, 9));
@@ -151,6 +176,12 @@ export const RoomParticipantPage: React.FC = () => {
             setShowVotingModal(false);
           }
         },
+        onRankingsChange: (newRankings) => {
+          setRankings(newRankings);
+        },
+        onRatingSubmit: (data) => {
+          showToast(`🌟 ${data.voter || 'Alguém'} avaliou ${data.singer} com ${data.score}★!`);
+        },
         onReaction: (reaction) => {
           setReactions((prev) => [
             ...prev,
@@ -169,7 +200,7 @@ export const RoomParticipantPage: React.FC = () => {
     return () => {
       service.disconnect();
     };
-  }, [code, nickname]);
+  }, [code, nickname, hasJoined]);
 
   // Estados de Busca no YouTube
   const [searchResults, setSearchResults] = useState<YouTubeSearchResultItem[]>([]);
@@ -231,11 +262,28 @@ export const RoomParticipantPage: React.FC = () => {
     }
   };
 
+  const handleJoinRoom = (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanNick = joinNickInput.trim();
+    if (!cleanNick) {
+      setJoinError('Por favor, informe seu nome ou apelido para entrar na sala.');
+      return;
+    }
+    const finalNick = selectedAvatar ? `${selectedAvatar} ${cleanNick}` : cleanNick;
+    localStorage.setItem('karaoke_nickname', finalNick);
+    sessionStorage.setItem(`karaoke_joined_${roomCode}`, 'true');
+    setNickname(finalNick);
+    setTempNick(finalNick);
+    setHasJoined(true);
+    setJoinError(null);
+  };
+
   const handleAddSongToQueue = (title: string, artist: string, videoId: string) => {
     const newPosition = upcomingQueue.length + 1;
     const singerName = isDuet && selectedDuetPartner ? `${nickname} & ${selectedDuetPartner}` : nickname;
+    const songId = generateUUID();
     const newMySong = {
-      id: String(Date.now()),
+      id: songId,
       title,
       artist,
       position: newPosition,
@@ -254,7 +302,7 @@ export const RoomParticipantPage: React.FC = () => {
 
     // Transmitir para o Telão e Organizador via Supabase Realtime
     serviceRef.current?.addSongToQueue({
-      id: newMySong.id,
+      id: songId,
       title,
       artist,
       singer: singerName,
@@ -298,6 +346,97 @@ export const RoomParticipantPage: React.FC = () => {
       setIsEditingNick(false);
     }
   };
+
+  // Se o participante ainda não informou seu nome para esta sala, exibe a tela de entrada obrigatória
+  if (!hasJoined) {
+    return (
+      <div className="min-h-screen bg-dark-base text-text-primary flex flex-col justify-center items-center p-4 relative overflow-hidden select-none">
+        {/* Background Neon Blobs */}
+        <div className="absolute -top-32 -left-32 w-[500px] h-[500px] bg-brand-purple/20 rounded-full blur-[140px] pointer-events-none" />
+        <div className="absolute -bottom-32 -right-32 w-[500px] h-[500px] bg-brand-pink/20 rounded-full blur-[140px] pointer-events-none" />
+
+        <div className="w-full max-w-sm rounded-3xl border border-brand-purple/40 bg-dark-surface/90 backdrop-blur-2xl p-6 sm:p-8 text-center shadow-glass relative z-10 space-y-6 animate-fade-in">
+          {/* Header Badge */}
+          <div className="flex flex-col items-center gap-2">
+            <span className="px-3.5 py-1 rounded-full bg-brand-purple/20 text-brand-purple-light border border-brand-purple/40 text-xs font-bold uppercase tracking-wider shadow-neon-purple/20">
+              🎤 Karaokê da Festa • Sala {roomCode}
+            </span>
+            <h2 className="font-display font-black text-2xl sm:text-3xl text-white mt-1">
+              Quem é você na festa?
+            </h2>
+            <p className="text-xs text-text-secondary leading-relaxed">
+              Digite seu nome ou apelido para pedir músicas, cantar no palco e participar da classificação ao vivo!
+            </p>
+          </div>
+
+          {/* Avatar / Emoji Picker */}
+          <div className="space-y-1.5">
+            <label className="text-[11px] font-bold uppercase tracking-wider text-text-muted block">
+              Escolha seu ícone:
+            </label>
+            <div className="flex justify-center gap-1.5 flex-wrap">
+              {['🎤', '🌟', '🔥', '😎', '🎸', '👑', '🥳', '💃'].map((emoji) => (
+                <button
+                  key={emoji}
+                  type="button"
+                  onClick={() => setSelectedAvatar(emoji)}
+                  className={`w-10 h-10 rounded-xl text-xl flex items-center justify-center transition-all ${
+                    selectedAvatar === emoji
+                      ? 'bg-brand-purple/30 border-2 border-brand-pink scale-110 shadow-neon-pink'
+                      : 'bg-dark-base border border-dark-border opacity-60 hover:opacity-100'
+                  }`}
+                >
+                  {emoji}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Form */}
+          <form onSubmit={handleJoinRoom} className="space-y-4 text-left">
+            <div>
+              <label className="text-xs font-bold uppercase tracking-wider text-text-secondary block mb-1.5">
+                Seu Nome ou Apelido:
+              </label>
+              <div className="relative">
+                <input
+                  type="text"
+                  value={joinNickInput}
+                  onChange={(e) => {
+                    setJoinNickInput(e.target.value);
+                    if (joinError) setJoinError(null);
+                  }}
+                  placeholder="Ex: Kelvin Moreira"
+                  maxLength={24}
+                  autoFocus
+                  required
+                  className="w-full rounded-2xl border-2 border-dark-border bg-dark-base px-4 py-3.5 text-base text-white placeholder:text-text-muted focus:border-brand-purple focus:outline-none focus:shadow-neon-purple transition-all"
+                />
+              </div>
+              {joinError && (
+                <p className="text-xs text-status-danger mt-1.5 flex items-center gap-1 font-semibold">
+                  <AlertCircle className="w-3.5 h-3.5" /> {joinError}
+                </p>
+              )}
+            </div>
+
+            <button
+              type="submit"
+              disabled={!joinNickInput.trim()}
+              className="w-full py-4 rounded-2xl bg-gradient-to-r from-brand-purple via-brand-pink to-brand-cyan text-white font-bold text-sm uppercase tracking-wider shadow-neon-purple hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-40 disabled:hover:scale-100 flex items-center justify-center gap-2"
+            >
+              <span>Entrar no Karaokê</span>
+              <span>🚀</span>
+            </button>
+          </form>
+
+          <p className="text-[11px] text-text-muted">
+            Você poderá alterar seu apelido a qualquer momento durante a festa.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="relative min-h-screen bg-dark-base text-text-primary pb-24 overflow-x-hidden">
@@ -806,63 +945,71 @@ export const RoomParticipantPage: React.FC = () => {
               </div>
             )}
 
-            {/* Sugestões Populares */}
+            {/* Guia de Busca Rápida no YouTube */}
             {searchResults.length === 0 && !isSearching && (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <p className="text-xs font-bold uppercase tracking-wider text-text-secondary">
-                    Sugestões Populares de Karaokê
+              <div className="rounded-2xl border border-dark-border bg-dark-surface/70 p-5 text-center space-y-4">
+                <div className="w-12 h-12 rounded-2xl bg-brand-purple/20 text-brand-purple-light flex items-center justify-center mx-auto text-2xl shadow-neon-purple/20">
+                  🔍
+                </div>
+                <div className="space-y-1">
+                  <h4 className="font-bold text-sm text-white">Pesquise Qualquer Música</h4>
+                  <p className="text-xs text-text-muted max-w-xs mx-auto leading-relaxed">
+                    Digite o título da canção ou artista no campo de busca para encontrar vídeos de karaokê no YouTube.
                   </p>
-                  {!hasApiKey && (
+                </div>
+
+                <div className="pt-1">
+                  <p className="text-[11px] font-bold text-text-secondary uppercase tracking-wider mb-2">
+                    Buscar por Estilo Musical:
+                  </p>
+                  <div className="flex flex-wrap justify-center gap-1.5">
+                    {[
+                      'Sertanejo',
+                      'Rock Nacional',
+                      'Pop',
+                      'Pagode',
+                      'MPB',
+                      'Anos 80',
+                      'Internacional',
+                      'Gospel',
+                    ].map((genre) => (
+                      <button
+                        key={genre}
+                        onClick={() => setSearchQuery(`${genre} Karaokê`)}
+                        className="px-2.5 py-1 rounded-lg bg-dark-elevated border border-dark-border hover:border-brand-purple/60 hover:text-brand-purple-light text-[11px] text-text-secondary transition-all"
+                      >
+                        {genre}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {!hasApiKey && (
+                  <div className="pt-2 border-t border-dark-border/60">
                     <button
                       onClick={() => {
                         setTempApiKey(getYouTubeApiKey());
                         setShowKeyModal(true);
                       }}
-                      className="text-[11px] text-brand-purple-light hover:underline flex items-center gap-1"
+                      className="text-xs text-brand-purple-light hover:underline inline-flex items-center gap-1.5 font-semibold"
                     >
-                      <Key className="w-3 h-3" /> Configurar API Key
-                    </button>
-                  )}
-                </div>
-
-                {[
-                  { title: 'Evidências (Karaokê)', channel: 'Karaokê Brasil', dur: '4:30', id: 'evidencias' },
-                  { title: 'Menina Veneno (Karaokê)', channel: 'Top Karaokê', dur: '3:50', id: 'veneno' },
-                  { title: 'Temporal de Amor (Karaokê)', channel: 'SertanejoKaraoke', dur: '4:10', id: 'temporal' },
-                  { title: 'Rolling in the Deep (Karaoke)', channel: 'Sing King', dur: '3:48', id: 'adele' },
-                ].map((song) => (
-                  <div
-                    key={song.id}
-                    className="flex items-center justify-between p-3 rounded-xl border border-dark-border bg-dark-surface hover:border-brand-purple/50 transition-all"
-                  >
-                    <div className="min-w-0 flex-1 mr-3">
-                      <p className="text-sm font-semibold text-text-primary truncate">{song.title}</p>
-                      <p className="text-xs text-text-muted">
-                        {song.channel} • {song.dur}
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => handleAddSongToQueue(song.title, song.channel, song.id)}
-                      className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-brand-purple to-brand-pink text-white text-xs font-bold flex items-center gap-1 shadow-neon-purple/40 hover:scale-105 active:scale-95 transition-all"
-                    >
-                      <Plus className="w-3.5 h-3.5" /> Adicionar
+                      <Key className="w-3.5 h-3.5" /> Configurar Chave YouTube API
                     </button>
                   </div>
-                ))}
+                )}
               </div>
             )}
           </div>
         )}
 
-        {/* TAB 3: RANKING & PÓDIO */}
+        {/* TAB 3: RANKING & PÓDIO (CLASSIFICAÇÃO EM TEMPO REAL) */}
         {activeTab === 'ranking' && (
           <div className="space-y-4">
             <div className="text-center py-2">
               <h3 className="font-display font-black text-xl text-white flex items-center justify-center gap-2">
-                <Sparkles className="w-5 h-5 text-brand-gold" /> Hall da Fama da Festa
+                <Sparkles className="w-5 h-5 text-brand-gold animate-pulse" /> Hall da Fama da Festa
               </h3>
-              <p className="text-xs text-text-muted">Os maiores talentos da cantoria!</p>
+              <p className="text-xs text-text-muted">Classificação das melhores cantorias da noite!</p>
             </div>
 
             {rankings.length === 0 ? (
@@ -873,34 +1020,121 @@ export const RoomParticipantPage: React.FC = () => {
                 </div>
                 <h4 className="font-display font-bold text-sm text-white">Nenhum show avaliado ainda</h4>
                 <p className="text-xs text-text-muted max-w-xs mx-auto">
-                  As notas aparecerão aqui após as apresentações! Cante e ganhe até 5 estrelas da galera.
+                  As notas dos convidados aparecerão aqui após as apresentações! Cante e receba até 5 estrelas da galera.
                 </p>
                 <div className="pt-2">
                   <button
                     onClick={() => setActiveTab('search')}
                     className="px-4 py-2 rounded-xl bg-gradient-to-r from-brand-purple to-brand-pink text-white text-xs font-bold shadow-neon-purple transition-all"
                   >
-                    Cantar Agora
+                    Cantar Agora 🎤
                   </button>
                 </div>
               </div>
             ) : (
-              <div className="space-y-2">
-                {rankings.map((item) => (
-                  <div
-                    key={item.pos}
-                    className="flex items-center justify-between p-3 rounded-xl border border-dark-border bg-dark-surface"
+              <div className="space-y-2.5">
+                {/* Top 3 Podium Cards */}
+                {rankings.slice(0, 3).map((item) => {
+                  const isFirst = item.pos === 1;
+                  const isSecond = item.pos === 2;
+                  const isMe = item.name.toLowerCase().includes(nickname.toLowerCase());
+
+                  return (
+                    <div
+                      key={`${item.pos}_${item.name}`}
+                      className={`relative overflow-hidden p-4 rounded-2xl border transition-all ${
+                        isFirst
+                          ? 'bg-gradient-to-r from-brand-gold/20 via-dark-surface to-dark-surface border-brand-gold/60 shadow-neon-gold'
+                          : isSecond
+                          ? 'bg-gradient-to-r from-slate-300/15 via-dark-surface to-dark-surface border-slate-300/40 shadow-sm'
+                          : 'bg-gradient-to-r from-amber-700/15 via-dark-surface to-dark-surface border-amber-700/40 shadow-sm'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <div
+                            className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg font-black shrink-0 ${
+                              isFirst
+                                ? 'bg-brand-gold text-dark-base shadow-neon-gold'
+                                : isSecond
+                                ? 'bg-slate-300 text-dark-base'
+                                : 'bg-amber-700 text-white'
+                            }`}
+                          >
+                            {isFirst ? '🥇' : isSecond ? '🥈' : '🥉'}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <h4 className="font-display font-black text-sm text-white truncate">
+                                {item.name}
+                              </h4>
+                              {isMe && (
+                                <span className="px-1.5 py-0.5 rounded-full bg-brand-purple/30 text-brand-purple-light text-[10px] font-bold border border-brand-purple/40">
+                                  Você
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[11px] text-text-secondary truncate">
+                              {item.song ? `🎵 "${item.song}"` : 'Apresentação no Palco'}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="text-right shrink-0">
+                          <div className="flex items-center justify-end gap-1 text-sm font-black text-brand-gold">
+                            <span>{item.stars}</span>
+                            <span>★</span>
+                          </div>
+                          <span className="text-[10px] text-text-muted font-medium block">
+                            {item.points} pts ({item.totalVotes} {item.totalVotes === 1 ? 'voto' : 'votos'})
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {/* Posições 4 em diante */}
+                {rankings.slice(3).map((item) => {
+                  const isMe = item.name.toLowerCase().includes(nickname.toLowerCase());
+                  return (
+                    <div
+                      key={`${item.pos}_${item.name}`}
+                      className="flex items-center justify-between p-3 rounded-xl border border-dark-border bg-dark-surface hover:border-brand-purple/30 transition-all"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <span className="w-7 text-xs font-black text-text-muted">#{item.pos}</span>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs font-bold text-text-primary truncate">{item.name}</span>
+                            {isMe && (
+                              <span className="px-1.5 py-0.2 rounded-full bg-brand-purple/20 text-brand-purple-light text-[9px] font-bold">
+                                Você
+                              </span>
+                            )}
+                          </div>
+                          {item.song && (
+                            <p className="text-[10px] text-text-muted truncate">"{item.song}"</p>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="text-right shrink-0">
+                        <span className="text-xs font-bold text-brand-gold">{item.stars} ★</span>
+                        <span className="text-[10px] text-text-muted block">({item.points} pts)</span>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                <div className="pt-2 text-center">
+                  <button
+                    onClick={() => setActiveTab('search')}
+                    className="w-full py-2.5 rounded-xl bg-gradient-to-r from-brand-purple/20 to-brand-pink/20 hover:from-brand-purple/30 hover:to-brand-pink/30 border border-brand-purple/40 text-brand-purple-light font-bold text-xs transition-all flex items-center justify-center gap-1.5"
                   >
-                    <div className="flex items-center gap-3">
-                      <span className="text-xs font-bold text-text-muted">#{item.pos}</span>
-                      <span className="text-sm font-semibold text-text-primary">{item.name}</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-xs">
-                      <span className="text-brand-gold font-bold">{item.stars} ★</span>
-                      <span className="text-text-muted">({item.points} pts)</span>
-                    </div>
-                  </div>
-                ))}
+                    <Plus className="w-3.5 h-3.5" /> Cantar e Subir no Ranking!
+                  </button>
+                </div>
               </div>
             )}
           </div>
@@ -1052,9 +1286,20 @@ export const RoomParticipantPage: React.FC = () => {
               disabled={!selectedRating}
               onClick={async () => {
                 if (selectedRating && serviceRef.current) {
-                  await serviceRef.current.submitRating(selectedRating);
+                  const songTitle = countdownState?.songTitle || currentStageSong?.title || 'Show de Karaokê';
+                  const singerName = countdownState?.singerName || currentStageSong?.singer || 'Cantor';
+                  await serviceRef.current.submitRating(selectedRating, songTitle, singerName);
+                  try {
+                    confetti({
+                      particleCount: 50,
+                      spread: 60,
+                      origin: { y: 0.6 },
+                    });
+                  } catch {
+                    // ignore
+                  }
                 }
-                showToast(`Voto de ${selectedRating} estrelas enviado! 🌟`);
+                showToast(`Voto de ${selectedRating} estrelas computado no Ranking! 🌟`);
                 setShowVotingModal(false);
                 setSelectedRating(null);
               }}

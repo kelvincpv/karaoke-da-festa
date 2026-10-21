@@ -47,13 +47,25 @@ export interface VotingCountdownPayload {
   nextSingerName?: string;
 }
 
+export interface RankingItemSync {
+  pos: number;
+  name: string;
+  song?: string;
+  stars: string;
+  averageStars: number;
+  points: number;
+  totalVotes: number;
+  lastUpdated?: number;
+}
+
 export interface RoomSyncCallbacks {
   onParticipantsChange?: (participants: RoomParticipantSync[]) => void;
   onQueueChange?: (queue: QueueItemSync[]) => void;
   onCurrentSongChange?: (song: QueueItemSync | null) => void;
   onVotingChange?: (votingOpen: boolean) => void;
   onReaction?: (reaction: FloatingReactionSync) => void;
-  onRatingSubmit?: (rating: { singer: string; score: number }) => void;
+  onRatingSubmit?: (rating: { singer: string; song?: string; score: number; voter?: string }) => void;
+  onRankingsChange?: (rankings: RankingItemSync[]) => void;
   onPlaybackCommand?: (command: PlaybackCommandPayload) => void;
   onVotingCountdown?: (countdown: VotingCountdownPayload) => void;
 }
@@ -65,6 +77,7 @@ export class RoomRealtimeService {
   private callbacks: RoomSyncCallbacks;
   private currentQueue: QueueItemSync[] = [];
   private currentSong: QueueItemSync | null = null;
+  private rankings: RankingItemSync[] = [];
   private votingOpen: boolean = false;
   private roomId: string | null = null;
   private participantDbId: string | null = null;
@@ -114,6 +127,7 @@ export class RoomRealtimeService {
       await this.ensureRoomAndParticipantInDatabase();
       await this.reloadQueueFromDatabase();
       await this.reloadParticipantsFromDatabase();
+      await this.reloadRankingsFromDatabase();
     }
 
     // 2. Canal Supabase Realtime (Presence, Broadcast e Postgres Changes)
@@ -195,8 +209,17 @@ export class RoomRealtimeService {
         if (payload && this.callbacks.onRatingSubmit) {
           this.callbacks.onRatingSubmit({
             singer: payload.singer,
+            song: payload.song,
             score: payload.stars || payload.score,
+            voter: payload.voter || payload.participant,
           });
+        }
+      })
+      .on('broadcast', { event: 'rankings_update' }, ({ payload }) => {
+        if (Array.isArray(payload?.rankings)) {
+          this.rankings = payload.rankings;
+          this.callbacks.onRankingsChange?.(this.rankings);
+          localStorage.setItem(`karaoke_rankings_${this.roomCode}`, JSON.stringify(this.rankings));
         }
       })
       .on('broadcast', { event: 'reaction' }, ({ payload }) => {
@@ -209,7 +232,7 @@ export class RoomRealtimeService {
         }
       })
       .on('broadcast', { event: 'request_state' }, () => {
-        if (this.currentUser.isOrganizer || this.currentQueue.length > 0 || this.currentSong) {
+        if (this.currentUser.isOrganizer || this.currentQueue.length > 0 || this.currentSong || this.rankings.length > 0) {
           this.broadcastState();
         }
       })
@@ -226,6 +249,11 @@ export class RoomRealtimeService {
           if (payload.votingOpen !== undefined) {
             this.votingOpen = payload.votingOpen;
             this.callbacks.onVotingChange?.(this.votingOpen);
+          }
+          if (Array.isArray(payload.rankings) && payload.rankings.length > 0) {
+            this.rankings = payload.rankings;
+            this.callbacks.onRankingsChange?.(this.rankings);
+            localStorage.setItem(`karaoke_rankings_${this.roomCode}`, JSON.stringify(this.rankings));
           }
         }
       });
@@ -573,49 +601,123 @@ export class RoomRealtimeService {
   }
 
   /**
-   * Envia uma avaliação de performance (1 a 5 estrelas)
+   * Recarrega o ranking da sala persistido no PostgreSQL ou localStorage
    */
-  public async submitRating(stars: number): Promise<{ success: boolean; message?: string }> {
-    const singer = this.currentSong?.singer || 'Cantor';
+  public async reloadRankingsFromDatabase(): Promise<void> {
+    if (!isSupabaseConfigured || !this.roomId) return;
+    try {
+      const { data: dbRanks, error } = await supabase.rpc('rpc_get_rankings', { p_room_id: this.roomId });
+      if (!error && dbRanks?.individual && Array.isArray(dbRanks.individual) && dbRanks.individual.length > 0) {
+        const mapped: RankingItemSync[] = dbRanks.individual.map((item: any, idx: number) => ({
+          pos: idx + 1,
+          name: item.nickname,
+          song: item.song_title || 'Show de Karaokê',
+          stars: Number(item.average_stars || 5).toFixed(1),
+          averageStars: Number(item.average_stars || 5),
+          points: Number(item.total_points || 0),
+          totalVotes: Number(item.songs_sung || 1),
+          lastUpdated: Date.now(),
+        }));
+        this.rankings = mapped;
+        this.callbacks.onRankingsChange?.(mapped);
+        localStorage.setItem(`karaoke_rankings_${this.roomCode}`, JSON.stringify(mapped));
+      }
+    } catch (err) {
+      console.warn('[Realtime] Erro ao recarregar rankings do banco:', err);
+    }
+  }
 
-    // Broadcast imediato para animação nos outros dispositivos
+  /**
+   * Envia uma avaliação de performance (1 a 5 estrelas) e atualiza o ranking em tempo real
+   */
+  public async submitRating(
+    stars: number,
+    songTitle?: string,
+    singerName?: string
+  ): Promise<{ success: boolean; message?: string }> {
+    const singer = (singerName || this.currentSong?.singer || 'Cantor da Festa').trim();
+    const song = (songTitle || this.currentSong?.title || 'Karaokê').trim();
+
+    // 1. Atualizar ledger de classificação (Rankings) em memória
+    const existingIdx = this.rankings.findIndex(
+      (r) => r.name.toLowerCase() === singer.toLowerCase()
+    );
+
+    if (existingIdx >= 0) {
+      const item = this.rankings[existingIdx];
+      const newTotalVotes = item.totalVotes + 1;
+      const sumPoints = (item.averageStars * item.totalVotes) + stars;
+      const newAvg = Number((sumPoints / newTotalVotes).toFixed(1));
+      const newScorePoints = Math.round(newAvg * 100) + (newTotalVotes * 10);
+      this.rankings[existingIdx] = {
+        ...item,
+        song: song || item.song,
+        stars: newAvg.toFixed(1),
+        averageStars: newAvg,
+        points: newScorePoints,
+        totalVotes: newTotalVotes,
+        lastUpdated: Date.now(),
+      };
+    } else {
+      const newScorePoints = Math.round(stars * 100) + 10;
+      this.rankings.push({
+        pos: this.rankings.length + 1,
+        name: singer,
+        song,
+        stars: stars.toFixed(1),
+        averageStars: stars,
+        points: newScorePoints,
+        totalVotes: 1,
+        lastUpdated: Date.now(),
+      });
+    }
+
+    // Ordenar por pontuação decrescente
+    this.rankings.sort(
+      (a, b) => b.points - a.points || b.averageStars - a.averageStars || b.totalVotes - a.totalVotes
+    );
+    this.rankings.forEach((r, idx) => {
+      r.pos = idx + 1;
+    });
+
+    localStorage.setItem(`karaoke_rankings_${this.roomCode}`, JSON.stringify(this.rankings));
+
+    // Transmitir rankings atualizados para todos os clientes
+    this.channel?.send({
+      type: 'broadcast',
+      event: 'rankings_update',
+      payload: { rankings: this.rankings },
+    });
+    this.callbacks.onRankingsChange?.(this.rankings);
+
+    // Broadcast do voto individual
     this.channel?.send({
       type: 'broadcast',
       event: 'rating_submit',
-      payload: { singer, stars, participant: this.currentUser.name },
+      payload: { singer, song, stars, voter: this.currentUser.name },
     });
-    this.callbacks.onRatingSubmit?.({ singer, score: stars });
+    this.callbacks.onRatingSubmit?.({ singer, song, score: stars, voter: this.currentUser.name });
 
-    if (isSupabaseConfigured && this.roomId && this.currentSong?.id) {
+    // Salvar no PostgreSQL se Supabase configurado
+    if (isSupabaseConfigured && this.roomId) {
       try {
         const participantId =
           this.participantDbId ||
           localStorage.getItem(`karaoke_participant_db_id_${this.roomCode}`);
-        if (participantId) {
-          // Tentar RPC oficial primeiro
-          const { error: rpcErr } = await supabase.rpc('rpc_submit_rating', {
+        const isUuid = (v?: string | null) =>
+          typeof v === 'string' &&
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
+
+        if (isUuid(this.currentSong?.id) && isUuid(participantId)) {
+          await supabase.rpc('rpc_submit_rating', {
             p_room_id: this.roomId,
-            p_queue_item_id: this.currentSong.id,
+            p_queue_item_id: this.currentSong!.id,
             p_voter_participant_id: participantId,
             p_stars: stars,
           });
-
-          if (!rpcErr) return { success: true };
-
-          // Fallback para inserção direta se RPC falhar
-          const { error: insertErr } = await supabase.from('ratings').insert({
-            room_id: this.roomId,
-            queue_item_id: this.currentSong.id,
-            voter_participant_id: participantId,
-            stars,
-          });
-
-          if (!insertErr) return { success: true };
-          return { success: false, message: insertErr.message };
         }
       } catch (err: any) {
-        console.warn('[Realtime] Erro ao salvar nota:', err);
-        return { success: false, message: err?.message };
+        console.warn('[Realtime] Tentativa de salvar nota no Supabase:', err?.message);
       }
     }
 
@@ -700,8 +802,30 @@ export class RoomRealtimeService {
         queue: this.currentQueue,
         currentSong: this.currentSong,
         votingOpen: this.votingOpen,
+        rankings: this.rankings,
       },
     });
+  }
+
+  /**
+   * Retorna os rankings atuais em memória
+   */
+  public getRankings(): RankingItemSync[] {
+    return [...this.rankings];
+  }
+
+  /**
+   * Zera a classificação da sala (útil para o organizador reiniciar a contagem)
+   */
+  public async resetRankings(): Promise<void> {
+    this.rankings = [];
+    localStorage.removeItem(`karaoke_rankings_${this.roomCode}`);
+    this.channel?.send({
+      type: 'broadcast',
+      event: 'rankings_update',
+      payload: { rankings: [] },
+    });
+    this.callbacks.onRankingsChange?.([]);
   }
 
   /**
@@ -813,6 +937,15 @@ export class RoomRealtimeService {
         if (Array.isArray(parsed) && parsed.length > 0 && this.currentQueue.length === 0) {
           this.currentQueue = parsed;
           this.callbacks.onQueueChange?.(parsed);
+        }
+      }
+
+      const savedRankings = localStorage.getItem(`karaoke_rankings_${this.roomCode}`);
+      if (savedRankings) {
+        const parsedRankings = JSON.parse(savedRankings);
+        if (Array.isArray(parsedRankings) && parsedRankings.length > 0 && this.rankings.length === 0) {
+          this.rankings = parsedRankings;
+          this.callbacks.onRankingsChange?.(parsedRankings);
         }
       }
     } catch {

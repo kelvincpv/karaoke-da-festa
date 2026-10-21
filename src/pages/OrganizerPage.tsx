@@ -24,10 +24,12 @@ import {
   Plus,
   Key,
   Cast,
+  Trophy,
 } from 'lucide-react';
 import { extractYouTubeVideoId, getYouTubeThumbnail, YOUTUBE_PREMIUM_LOGIN_URL } from '../lib/youtube';
-import { RoomRealtimeService } from '../services/roomRealtimeService';
+import { RoomRealtimeService, type RankingItemSync } from '../services/roomRealtimeService';
 import { youtubeBridgeService, type BridgeState } from '../services/youtubeBridgeService';
+import { generateUUID } from '../lib/utils';
 
 interface QueueItemLocal {
   id: string;
@@ -65,6 +67,14 @@ export const OrganizerPage: React.FC = () => {
     songTitle: string;
     singerName: string;
   } | null>(null);
+  const [rankings, setRankings] = useState<RankingItemSync[]>(() => {
+    try {
+      const saved = localStorage.getItem(`karaoke_rankings_${(code || 'FESTA1').toUpperCase()}`);
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
   const [bridgeState, setBridgeState] = useState<BridgeState>(youtubeBridgeService.getState());
   const serviceRef = useRef<RoomRealtimeService | null>(null);
 
@@ -114,6 +124,9 @@ export const OrganizerPage: React.FC = () => {
         onPlaybackCommand: (command) => {
           if (command.action === 'play') setIsPlaying(true);
           if (command.action === 'pause') setIsPlaying(false);
+        },
+        onRankingsChange: (newRankings) => {
+          setRankings(newRankings);
         },
       }
     );
@@ -190,7 +203,7 @@ export const OrganizerPage: React.FC = () => {
       return;
     }
     const newItem: QueueItemLocal = {
-      id: String(Date.now()),
+      id: generateUUID(),
       title: manualSongTitle.trim() || 'Música do YouTube',
       artist: 'Karaokê',
       singer: manualSinger.trim() || 'Organizador',
@@ -828,6 +841,69 @@ export const OrganizerPage: React.FC = () => {
                 Pausar Emojis Temporariamente
               </button>
             </div>
+          </div>
+
+          {/* CARD CLASSIFICAÇÃO DA FESTA (RANKING AO VIVO) */}
+          <div className="rounded-2xl border border-brand-gold/40 bg-dark-surface p-5 flex flex-col gap-3 shadow-neon-gold/15">
+            <div className="flex items-center justify-between">
+              <h2 className="font-display font-bold text-base text-white flex items-center gap-2">
+                <Trophy className="w-4 h-4 text-brand-gold" /> Classificação da Festa
+              </h2>
+              {rankings.length > 0 && (
+                <button
+                  onClick={async () => {
+                    if (window.confirm('Tem certeza que deseja zerar a classificação desta festa?')) {
+                      await serviceRef.current?.resetRankings();
+                      showToast('Classificação zerada com sucesso!');
+                    }
+                  }}
+                  className="text-[10px] text-text-muted hover:text-status-danger underline transition-colors"
+                >
+                  Zerar Placar
+                </button>
+              )}
+            </div>
+
+            {rankings.length === 0 ? (
+              <div className="p-4 rounded-xl border border-dashed border-dark-border bg-dark-base/40 text-center space-y-1">
+                <p className="text-xs font-semibold text-text-secondary">Nenhum voto computado ainda</p>
+                <p className="text-[10px] text-text-muted">
+                  Assim que os participantes avaliarem as apresentações, os líderes aparecerão aqui em tempo real.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-1.5 max-h-[300px] overflow-y-auto pr-1">
+                {rankings.map((item) => (
+                  <div
+                    key={`${item.pos}_${item.name}`}
+                    className={`flex items-center justify-between p-2.5 rounded-xl border transition-all ${
+                      item.pos === 1
+                        ? 'bg-brand-gold/15 border-brand-gold/50 shadow-sm'
+                        : 'bg-dark-elevated/40 border-dark-border'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <span className={`w-6 h-6 rounded-lg text-xs font-black flex items-center justify-center shrink-0 ${
+                        item.pos === 1 ? 'bg-brand-gold text-dark-base font-bold' : 'bg-dark-base text-text-muted'
+                      }`}>
+                        {item.pos === 1 ? '🥇' : item.pos === 2 ? '🥈' : item.pos === 3 ? '🥉' : `#${item.pos}`}
+                      </span>
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold text-white truncate">{item.name}</p>
+                        {item.song && (
+                          <p className="text-[10px] text-text-muted truncate">"{item.song}"</p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="text-right shrink-0">
+                      <span className="text-xs font-bold text-brand-gold">{item.stars} ★</span>
+                      <span className="text-[10px] text-text-muted block">({item.points} pts)</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>
