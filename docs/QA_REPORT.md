@@ -17,11 +17,35 @@
 | **Ciclo 04** | `TASK-QA-04` | Atalhos Diretos para Reprodução Oficial no YouTube (Telão e Organizador) | Aprovado | 100% |
 | **Ciclo 05** | `TASK-QA-05` | Revisão Técnica e Homologação da Extensão Chrome **Karaokê Bridge** (`9cf6375`) | Aprovado | 100% |
 | **Ciclo 06** | `TASK-QA-06` | Validação do Gate de Entrada, Rankings em Tempo Real (Top 3 Pódio) e Atalhos de Gêneros | Aprovado | 100% |
-| **Ciclo 07** | `TASK-QA-07` | Telão TV Fullscreen Edge-to-Edge c/ HUD Vertical à Direita e Entrada de Sala Longa | **APROVADO** ✅ | **100%** |
+| **Ciclo 07** | `TASK-QA-07` | Telão TV Fullscreen Edge-to-Edge c/ HUD Vertical à Direita e Entrada de Sala Longa | Aprovado | 100% |
+| **Ciclo 08** | `TASK-QA-08` | Voto Único por Música por Participante e Bloqueio de Auto-Avaliação do Cantor | **APROVADO** ✅ | **100%** |
 
 ---
 
-## 2. Validação do Ciclo 07 — `TASK-QA-07` (Commit `23b4711`)
+## 2. Validação do Ciclo 08 — `TASK-QA-08`
+
+### 2.1 Bloqueio de Auto-Avaliação para Quem Está Cantando
+- **Cenário de Teste:** O participante cujo apelido coincide com o cantor(a) ou parceiro de dueto da música ativa acessa a sala e a janela de avaliação abre.
+- **Evidências Coletadas:**
+  - **No Card do Palco (`RoomParticipantPage.tsx`):** O botão *"Avaliar Cantoria ⭐"* é automaticamente substituído por um badge indicativo: *"Você está no palco agora! 🎤 Dê um show!"*.
+  - **No Modal de Votação (Abertura pós-show ou contagem de 10s):** O participante que está cantando não recebe estrelas interativas nem botão de confirmação. Em seu lugar, é renderizado o estado comemorativo *"Você no Palco! Show de {Cantor}! Você não pode avaliar a sua própria apresentação. Relaxe e aguarde as notas da galera no Telão! ✨"*, com a barra de contagem dos votos dos outros convidados.
+  - **No Backend / Serviço (`roomRealtimeService.ts`):** Validação estrita em `submitRating` com a função `isSelfSinger`, rejeitando qualquer tentativa com a mensagem: *"Você está no palco e não pode avaliar a sua própria apresentação!"*.
+- **Status:** **APROVADO** ✅
+
+---
+
+### 2.2 Garantia de Voto Único por Participante por Música
+- **Cenário de Teste:** O participante envia sua nota de 1 a 5 estrelas e tenta votar novamente durante a mesma apresentação ou contagem regressiva.
+- **Evidências Coletadas:**
+  - **Após o Primeiro Voto:** A avaliação é registrada no ledger local (`karaoke_voted_performances_${roomCode}`) e enviada ao ranking em tempo real.
+  - **Persistência Visual no Card do Palco:** O botão de avaliar passa a exibir o status fixo: *"Avaliação enviada: Sua nota: {X} ★"* com ícone de verificação verde (`CheckCircle2`).
+  - **Proteção no Modal:** Se o participante abrir o modal novamente ou se a contagem regressiva estiver ativa, é apresentado o card informativo *"Você já avaliou este show! Cada participante pode enviar somente 1 avaliação por música"*, exibindo a nota que o usuário já havia atribuído.
+  - **Imutabilidade no Serviço (`roomRealtimeService.ts`):** `submitRating` consulta o set `votedPerformances` por chave única de apresentação (`getPerformanceKey`). Votos repetidos são bloqueados com a mensagem *"Você já avaliou esta apresentação!"*, impedindo qualquer inflação indevida de notas no Ranking.
+- **Status:** **APROVADO** ✅
+
+---
+
+## 3. Validação do Ciclo 07 — `TASK-QA-07` (Commit `23b4711`)
 
 ### 2.1 Player Telão TV Edge-to-Edge (`/tv/:code`)
 - **Cenário de Teste:** Execução de vídeo no Telão TV (`TvModePage.tsx`).

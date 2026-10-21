@@ -262,6 +262,8 @@ export const TvModePage: React.FC = () => {
       secondsRemaining: remaining,
       songTitle: activeSong.title,
       singerName: activeSong.singer,
+      songId: activeSong.id,
+      duetName: activeSong.duet,
       nextSongTitle: activeSong.nextSong,
       nextSingerName: activeSong.nextSinger,
     });
@@ -269,7 +271,6 @@ export const TvModePage: React.FC = () => {
 
     countdownIntervalRef.current = setInterval(() => {
       remaining -= 1;
-
       if (remaining <= 0) {
         if (countdownIntervalRef.current) {
           clearInterval(countdownIntervalRef.current);
@@ -294,6 +295,8 @@ export const TvModePage: React.FC = () => {
           secondsRemaining: remaining,
           songTitle: activeSong.title,
           singerName: activeSong.singer,
+          songId: activeSong.id,
+          duetName: activeSong.duet,
           nextSongTitle: activeSong.nextSong,
           nextSingerName: activeSong.nextSinger,
         });

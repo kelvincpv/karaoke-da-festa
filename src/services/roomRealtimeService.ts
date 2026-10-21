@@ -6,6 +6,7 @@
 
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import type { RealtimeChannel } from '@supabase/supabase-js';
+import { isSelfSinger, getPerformanceKey } from '../lib/utils';
 
 export interface RoomParticipantSync {
   id: string;
@@ -43,6 +44,8 @@ export interface VotingCountdownPayload {
   secondsRemaining: number;
   songTitle: string;
   singerName: string;
+  songId?: string;
+  duetName?: string;
   nextSongTitle?: string;
   nextSingerName?: string;
 }
@@ -82,6 +85,7 @@ export class RoomRealtimeService {
   private roomId: string | null = null;
   private participantDbId: string | null = null;
   private sessionToken: string;
+  private votedPerformances: Set<string> = new Set();
 
   constructor(
     roomCode: string,
@@ -92,6 +96,24 @@ export class RoomRealtimeService {
     this.currentUser = currentUser;
     this.callbacks = callbacks;
     this.sessionToken = this.getOrCreateSessionToken();
+    this.loadVotedPerformances();
+  }
+
+  /**
+   * Carrega histórico local de apresentações já avaliadas pelo participante nesta sala
+   */
+  private loadVotedPerformances(): void {
+    try {
+      const saved = localStorage.getItem(`karaoke_voted_performances_${this.roomCode}`);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (typeof parsed === 'object' && parsed !== null) {
+          Object.keys(parsed).forEach((k) => this.votedPerformances.add(k));
+        }
+      }
+    } catch {
+      // ignore
+    }
   }
 
   /**
@@ -628,15 +650,56 @@ export class RoomRealtimeService {
   }
 
   /**
-   * Envia uma avaliação de performance (1 a 5 estrelas) e atualiza o ranking em tempo real
+   * Verifica se o participante já avaliou determinada apresentação nesta sala
+   */
+  public hasVotedForPerformance(performanceKey: string): boolean {
+    return this.votedPerformances.has(performanceKey);
+  }
+
+  /**
+   * Envia uma avaliação de performance (1 a 5 estrelas) e atualiza o ranking em tempo real.
+   * Regras de negócio estritas:
+   * 1. O cantor (e/ou dueto) não pode se auto-avaliar.
+   * 2. Cada participante só pode avaliar 1 vez por música.
    */
   public async submitRating(
     stars: number,
     songTitle?: string,
-    singerName?: string
+    singerName?: string,
+    performanceId?: string,
+    duetName?: string
   ): Promise<{ success: boolean; message?: string }> {
     const singer = (singerName || this.currentSong?.singer || 'Cantor da Festa').trim();
     const song = (songTitle || this.currentSong?.title || 'Karaokê').trim();
+    const duet = (duetName || this.currentSong?.duet || '').trim();
+    const perfKey = getPerformanceKey(performanceId || this.currentSong?.id, singer, song);
+
+    // Validação 1: Bloqueio estrito de auto-avaliação (quem está cantando não pode votar)
+    if (isSelfSinger(singer, duet, this.currentUser.name)) {
+      return {
+        success: false,
+        message: 'Você está no palco e não pode avaliar a sua própria apresentação!',
+      };
+    }
+
+    // Validação 2: Bloqueio estrito de voto duplicado (1 avaliação por música para cada participante)
+    if (this.votedPerformances.has(perfKey)) {
+      return {
+        success: false,
+        message: 'Você já avaliou esta apresentação!',
+      };
+    }
+
+    // Registra imediatamente no ledger de votos do participante
+    this.votedPerformances.add(perfKey);
+    try {
+      const storageKey = `karaoke_voted_performances_${this.roomCode}`;
+      const existing = JSON.parse(localStorage.getItem(storageKey) || '{}');
+      existing[perfKey] = stars;
+      localStorage.setItem(storageKey, JSON.stringify(existing));
+    } catch {
+      // ignore
+    }
 
     // 1. Atualizar ledger de classificação (Rankings) em memória
     const existingIdx = this.rankings.findIndex(

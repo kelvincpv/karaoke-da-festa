@@ -17,6 +17,7 @@ import {
   Loader2,
   Key,
   Check,
+  CheckCircle2,
   Clock,
 } from 'lucide-react';
 import { REACTION_EMOJIS, ReactionEmoji } from '../types/karaoke';
@@ -29,7 +30,7 @@ import {
   type YouTubeSearchResultItem,
 } from '../lib/youtube';
 import { RoomRealtimeService, type RankingItemSync } from '../services/roomRealtimeService';
-import { generateUUID } from '../lib/utils';
+import { generateUUID, isSelfSinger, getPerformanceKey } from '../lib/utils';
 import confetti from 'canvas-confetti';
 
 interface FloatingReactionInstance {
@@ -78,12 +79,27 @@ export const RoomParticipantPage: React.FC = () => {
     secondsRemaining: number;
     songTitle: string;
     singerName: string;
+    songId?: string;
+    duetName?: string;
+    nextSongTitle?: string;
+    nextSingerName?: string;
   } | null>(null);
+
+  // Histórico de avaliações enviadas por este participante nesta sala (1 voto por música)
+  const [votedPerformances, setVotedPerformances] = useState<Record<string, number>>(() => {
+    try {
+      const saved = localStorage.getItem(`karaoke_voted_performances_${roomCode}`);
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
 
   // Sincronização em Tempo Real (Supabase Realtime)
   const [connectedParticipants, setConnectedParticipants] = useState<Array<{ id: string; name: string; isOrganizer?: boolean; joined?: string }>>([]);
   const [roomParticipants, setRoomParticipants] = useState<string[]>([]);
   const [currentStageSong, setCurrentStageSong] = useState<{
+    id?: string;
     title: string;
     artist: string;
     singer: string;
@@ -153,6 +169,7 @@ export const RoomParticipantPage: React.FC = () => {
         onCurrentSongChange: (song) => {
           if (song) {
             setCurrentStageSong({
+              id: song.id,
               title: song.title,
               artist: song.artist,
               singer: song.singer,
@@ -247,6 +264,17 @@ export const RoomParticipantPage: React.FC = () => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3000);
   };
+
+  // Identificação reativa da performance ativa e regras de voto
+  const activeSinger = countdownState?.singerName || currentStageSong?.singer || '';
+  const activeDuet = countdownState?.duetName || currentStageSong?.duet || '';
+  const activeTitle = countdownState?.songTitle || currentStageSong?.title || '';
+  const activeSongId = countdownState?.songId || currentStageSong?.id;
+  const activePerformanceKey = getPerformanceKey(activeSongId, activeSinger, activeTitle);
+
+  const isUserSinging = isSelfSinger(activeSinger, activeDuet, nickname);
+  const userRatingForActiveSong = votedPerformances[activePerformanceKey];
+  const hasAlreadyVoted = userRatingForActiveSong !== undefined;
 
   const handleSaveUserKey = (e: React.FormEvent) => {
     e.preventDefault();
@@ -564,13 +592,36 @@ export const RoomParticipantPage: React.FC = () => {
                 </div>
 
                 <div className="mt-4 pt-3 border-t border-dark-border/80 flex items-center justify-between">
-                  <span className="text-xs text-text-muted">Gostando do show? Avalie:</span>
-                  <button
-                    onClick={() => setShowVotingModal(true)}
-                    className="px-3 py-1.5 rounded-lg bg-brand-gold/20 text-brand-gold border border-brand-gold/40 text-xs font-bold hover:bg-brand-gold/30 transition-all flex items-center gap-1 shadow-neon-gold/20"
-                  >
-                    <Star className="w-3.5 h-3.5 fill-brand-gold" /> Avaliar Cantoria ⭐
-                  </button>
+                  {isUserSinging ? (
+                    <>
+                      <span className="text-xs text-brand-purple-light flex items-center gap-1.5 font-bold">
+                        <Mic className="w-3.5 h-3.5 animate-pulse text-brand-pink" /> Você está no palco agora!
+                      </span>
+                      <span className="px-3 py-1 rounded-lg bg-brand-purple/20 text-brand-purple-light border border-brand-purple/30 text-xs font-bold shadow-neon-purple/20">
+                        🎤 Dê um show!
+                      </span>
+                    </>
+                  ) : hasAlreadyVoted ? (
+                    <>
+                      <span className="text-xs text-text-muted">Avaliação enviada:</span>
+                      <span className="px-3 py-1 rounded-lg bg-dark-base text-brand-gold border border-brand-gold/30 text-xs font-bold flex items-center gap-1.5 shadow-neon-gold/15">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-status-success" /> Sua nota: {userRatingForActiveSong} ★
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-xs text-text-muted">Gostando do show? Avalie:</span>
+                      <button
+                        onClick={() => {
+                          setSelectedRating(null);
+                          setShowVotingModal(true);
+                        }}
+                        className="px-3 py-1.5 rounded-lg bg-brand-gold/20 text-brand-gold border border-brand-gold/40 text-xs font-bold hover:bg-brand-gold/30 transition-all flex items-center gap-1 shadow-neon-gold/20"
+                      >
+                        <Star className="w-3.5 h-3.5 fill-brand-gold" /> Avaliar Cantoria ⭐
+                      </button>
+                    </>
+                  )}
                 </div>
               </section>
             ) : (
@@ -1216,7 +1267,7 @@ export const RoomParticipantPage: React.FC = () => {
 
       {/* MODAL: VOTAÇÃO INTERATIVA (1 a 5 Estrelas) */}
       {showVotingModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-4 animate-fadeIn">
           <div className="w-full max-w-sm rounded-2xl border border-brand-gold/40 bg-dark-surface p-6 text-center shadow-neon-gold space-y-4 relative">
             <button
               onClick={() => setShowVotingModal(false)}
@@ -1225,88 +1276,210 @@ export const RoomParticipantPage: React.FC = () => {
               <X className="w-5 h-5" />
             </button>
 
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-brand-gold/20 text-brand-gold text-xs font-bold uppercase tracking-wider">
-              <Sparkles className="w-3.5 h-3.5" /> Hora da Nota!
-            </div>
+            {isUserSinging ? (
+              /* CENÁRIO 1: O PARTICIPANTE ESTÁ CANTANDO (AUTO-AVALIAÇÃO BLOQUEADA) */
+              <div className="space-y-4">
+                <div className="w-16 h-16 rounded-full bg-gradient-to-tr from-brand-purple to-brand-pink text-white flex items-center justify-center mx-auto text-3xl shadow-neon-purple animate-bounce">
+                  🎤
+                </div>
 
-            <div>
-              <h3 className="font-display font-black text-xl text-white">O que achou do show?</h3>
-              <p className="text-xs text-text-secondary mt-1">Avalie a performance no palco!</p>
-            </div>
+                <div>
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-brand-purple/20 text-brand-purple-light text-xs font-bold uppercase tracking-wider mb-2">
+                    <Sparkles className="w-3.5 h-3.5 text-brand-pink" /> Você no Palco!
+                  </span>
+                  <h3 className="font-display font-black text-xl text-white">
+                    Show de {activeSinger || 'Você'}!
+                  </h3>
+                  <p className="text-xs text-text-secondary mt-1.5 max-w-xs mx-auto leading-relaxed">
+                    Você não pode avaliar a sua própria apresentação. Relaxe e aguarde as notas da galera no Telão! ✨
+                  </p>
+                </div>
 
-            {/* Estrelas */}
-            <div className="flex justify-center gap-2 py-2">
-              {[1, 2, 3, 4, 5].map((star) => (
+                {/* Barra e Contador de Contagem Regressiva (10s) */}
+                {countdownState?.active && (
+                  <div className="w-full space-y-1.5 p-3 rounded-xl bg-dark-base/80 border border-brand-purple/40 shadow-inner">
+                    <div className="flex justify-between items-center text-xs font-bold text-brand-purple-light">
+                      <span className="flex items-center gap-1.5">
+                        <Clock className="w-3.5 h-3.5 animate-spin" /> A galera está votando:
+                      </span>
+                      <span className="font-mono text-sm px-2 py-0.5 rounded bg-brand-purple/20 text-brand-purple-light border border-brand-purple/50 shadow-neon-purple">
+                        {countdownState.secondsRemaining}s
+                      </span>
+                    </div>
+                    <div className="w-full h-2.5 bg-dark-base rounded-full overflow-hidden border border-brand-purple/30">
+                      <div
+                        className="h-full bg-gradient-to-r from-brand-purple via-brand-pink to-brand-cyan-light transition-all duration-1000 ease-linear shadow-neon-purple"
+                        style={{ width: `${Math.max(0, Math.min(100, (countdownState.secondsRemaining / 10) * 100))}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+
                 <button
-                  key={star}
                   type="button"
-                  onClick={() => setSelectedRating(star)}
-                  className={`text-3xl md:text-4xl transition-all ${
-                    (selectedRating || 0) >= star
-                      ? 'scale-125 filter drop-shadow-[0_0_12px_rgba(251,191,36,0.8)]'
-                      : 'opacity-40 hover:opacity-80'
-                  }`}
+                  onClick={() => setShowVotingModal(false)}
+                  className="w-full py-2.5 rounded-xl border border-dark-border bg-dark-elevated text-xs font-bold text-text-secondary hover:text-white transition-all"
                 >
-                  ⭐
+                  Fechar e Assistir ao Telão
                 </button>
-              ))}
-            </div>
+              </div>
+            ) : hasAlreadyVoted ? (
+              /* CENÁRIO 2: O PARTICIPANTE JÁ AVALIOU ESTA MÚSICA (1 VOTO POR MÚSICA) */
+              <div className="space-y-4">
+                <div className="w-16 h-16 rounded-full bg-status-success/20 text-status-success border border-status-success/40 flex items-center justify-center mx-auto text-3xl shadow-neon-purple">
+                  <CheckCircle2 className="w-8 h-8 text-status-success" />
+                </div>
 
-            {selectedRating && (
-              <p className="text-xs font-bold text-brand-gold animate-pulse">
-                {selectedRating === 1 && 'Faltou afinação 😅'}
-                {selectedRating === 2 && 'Tentativa válida! 👏'}
-                {selectedRating === 3 && 'Mandou bem! 🎶'}
-                {selectedRating === 4 && 'Voz de ouro! 🔥'}
-                {selectedRating === 5 && 'PROFISSIONAL! SHOW HISTÓRICO! 🌟'}
-              </p>
-            )}
-
-            {/* Barra e Contador de Contagem Regressiva (10s) */}
-            {countdownState?.active && (
-              <div className="w-full space-y-1.5 p-3 rounded-xl bg-dark-base/80 border border-brand-gold/40 shadow-inner">
-                <div className="flex justify-between items-center text-xs font-bold text-brand-gold">
-                  <span className="flex items-center gap-1.5">
-                    <Clock className="w-3.5 h-3.5 animate-spin" /> Tempo para avaliar:
+                <div>
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-status-success/20 text-status-success text-xs font-bold uppercase tracking-wider mb-2">
+                    Voto Registrado
                   </span>
-                  <span className="font-mono text-sm px-2 py-0.5 rounded bg-brand-gold/20 text-brand-gold border border-brand-gold/50 shadow-neon-gold">
-                    {countdownState.secondsRemaining}s
+                  <h3 className="font-display font-black text-xl text-white">
+                    Você já avaliou este show!
+                  </h3>
+                  <p className="text-xs text-text-secondary mt-1.5 max-w-xs mx-auto leading-relaxed">
+                    Cada participante pode enviar somente <strong className="text-white">1 avaliação por música</strong>. Seu voto já foi somado ao Ranking da Festa!
+                  </p>
+                </div>
+
+                <div className="p-3.5 rounded-xl bg-dark-base/80 border border-brand-gold/40 flex items-center justify-center gap-2 shadow-neon-gold/15">
+                  <span className="text-xs text-text-secondary font-medium">Sua nota para {activeSinger}:</span>
+                  <span className="text-brand-gold font-display font-black text-lg flex items-center gap-1">
+                    {userRatingForActiveSong} ★
                   </span>
                 </div>
-                <div className="w-full h-2.5 bg-dark-base rounded-full overflow-hidden border border-brand-gold/30">
-                  <div
-                    className="h-full bg-gradient-to-r from-brand-purple via-brand-pink to-brand-gold transition-all duration-1000 ease-linear shadow-neon-gold"
-                    style={{ width: `${Math.max(0, Math.min(100, (countdownState.secondsRemaining / 10) * 100))}%` }}
-                  />
+
+                {countdownState?.active && (
+                  <div className="w-full space-y-1.5 p-3 rounded-xl bg-dark-base/80 border border-brand-gold/40 shadow-inner">
+                    <div className="flex justify-between items-center text-xs font-bold text-brand-gold">
+                      <span className="flex items-center gap-1.5">
+                        <Clock className="w-3.5 h-3.5 animate-spin" /> Tempo restante de votação:
+                      </span>
+                      <span className="font-mono text-sm px-2 py-0.5 rounded bg-brand-gold/20 text-brand-gold border border-brand-gold/50 shadow-neon-gold">
+                        {countdownState.secondsRemaining}s
+                      </span>
+                    </div>
+                    <div className="w-full h-2.5 bg-dark-base rounded-full overflow-hidden border border-brand-gold/30">
+                      <div
+                        className="h-full bg-gradient-to-r from-brand-purple via-brand-pink to-brand-gold transition-all duration-1000 ease-linear shadow-neon-gold"
+                        style={{ width: `${Math.max(0, Math.min(100, (countdownState.secondsRemaining / 10) * 100))}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => setShowVotingModal(false)}
+                  className="w-full py-2.5 rounded-xl border border-dark-border bg-dark-elevated text-xs font-bold text-text-secondary hover:text-white transition-all"
+                >
+                  OK, Entendido
+                </button>
+              </div>
+            ) : (
+              /* CENÁRIO 3: PARTICIPANTE APTO A VOTAR */
+              <div className="space-y-4">
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-brand-gold/20 text-brand-gold text-xs font-bold uppercase tracking-wider">
+                  <Sparkles className="w-3.5 h-3.5" /> Hora da Nota!
                 </div>
+
+                <div>
+                  <h3 className="font-display font-black text-xl text-white">
+                    Como foi o show de {activeSinger}?
+                  </h3>
+                  <p className="text-xs text-text-secondary mt-1">
+                    "{activeTitle || 'Show no Palco'}"
+                  </p>
+                </div>
+
+                {/* Estrelas */}
+                <div className="flex justify-center gap-2 py-2">
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <button
+                      key={star}
+                      type="button"
+                      onClick={() => setSelectedRating(star)}
+                      className={`text-3xl md:text-4xl transition-all ${
+                        (selectedRating || 0) >= star
+                          ? 'scale-125 filter drop-shadow-[0_0_12px_rgba(251,191,36,0.8)]'
+                          : 'opacity-40 hover:opacity-80'
+                      }`}
+                    >
+                      ⭐
+                    </button>
+                  ))}
+                </div>
+
+                {selectedRating && (
+                  <p className="text-xs font-bold text-brand-gold animate-pulse">
+                    {selectedRating === 1 && 'Faltou afinação 😅'}
+                    {selectedRating === 2 && 'Tentativa válida! 👏'}
+                    {selectedRating === 3 && 'Mandou bem! 🎶'}
+                    {selectedRating === 4 && 'Voz de ouro! 🔥'}
+                    {selectedRating === 5 && 'PROFISSIONAL! SHOW HISTÓRICO! 🌟'}
+                  </p>
+                )}
+
+                {/* Barra e Contador de Contagem Regressiva (10s) */}
+                {countdownState?.active && (
+                  <div className="w-full space-y-1.5 p-3 rounded-xl bg-dark-base/80 border border-brand-gold/40 shadow-inner">
+                    <div className="flex justify-between items-center text-xs font-bold text-brand-gold">
+                      <span className="flex items-center gap-1.5">
+                        <Clock className="w-3.5 h-3.5 animate-spin" /> Tempo para avaliar:
+                      </span>
+                      <span className="font-mono text-sm px-2 py-0.5 rounded bg-brand-gold/20 text-brand-gold border border-brand-gold/50 shadow-neon-gold">
+                        {countdownState.secondsRemaining}s
+                      </span>
+                    </div>
+                    <div className="w-full h-2.5 bg-dark-base rounded-full overflow-hidden border border-brand-gold/30">
+                      <div
+                        className="h-full bg-gradient-to-r from-brand-purple via-brand-pink to-brand-gold transition-all duration-1000 ease-linear shadow-neon-gold"
+                        style={{ width: `${Math.max(0, Math.min(100, (countdownState.secondsRemaining / 10) * 100))}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <button
+                  disabled={!selectedRating}
+                  onClick={async () => {
+                    if (selectedRating && serviceRef.current) {
+                      const res = await serviceRef.current.submitRating(
+                        selectedRating,
+                        activeTitle,
+                        activeSinger,
+                        activeSongId,
+                        activeDuet
+                      );
+                      if (res.success) {
+                        const updated = {
+                          ...votedPerformances,
+                          [activePerformanceKey]: selectedRating,
+                        };
+                        setVotedPerformances(updated);
+                        try {
+                          confetti({
+                            particleCount: 50,
+                            spread: 60,
+                            origin: { y: 0.6 },
+                          });
+                        } catch {
+                          // ignore
+                        }
+                        showToast(`Voto de ${selectedRating} estrelas computado no Ranking! 🌟`);
+                        setShowVotingModal(false);
+                        setSelectedRating(null);
+                      } else {
+                        showToast(res.message || 'Não foi possível registrar o voto.');
+                      }
+                    }
+                  }}
+                  className="w-full py-3 rounded-xl bg-gradient-to-r from-brand-gold to-brand-pink font-bold text-dark-base text-sm shadow-neon-gold disabled:opacity-50 transition-all hover:scale-[1.02]"
+                >
+                  Confirmar Meu Voto
+                </button>
               </div>
             )}
-
-            <button
-              disabled={!selectedRating}
-              onClick={async () => {
-                if (selectedRating && serviceRef.current) {
-                  const songTitle = countdownState?.songTitle || currentStageSong?.title || 'Show de Karaokê';
-                  const singerName = countdownState?.singerName || currentStageSong?.singer || 'Cantor';
-                  await serviceRef.current.submitRating(selectedRating, songTitle, singerName);
-                  try {
-                    confetti({
-                      particleCount: 50,
-                      spread: 60,
-                      origin: { y: 0.6 },
-                    });
-                  } catch {
-                    // ignore
-                  }
-                }
-                showToast(`Voto de ${selectedRating} estrelas computado no Ranking! 🌟`);
-                setShowVotingModal(false);
-                setSelectedRating(null);
-              }}
-              className="w-full py-3 rounded-xl bg-gradient-to-r from-brand-gold to-brand-pink font-bold text-dark-base text-sm shadow-neon-gold disabled:opacity-50 transition-all hover:scale-[1.02]"
-            >
-              Confirmar Meu Voto
-            </button>
           </div>
         </div>
       )}
