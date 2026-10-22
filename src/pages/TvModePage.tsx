@@ -476,7 +476,20 @@ export const TvModePage: React.FC = () => {
               };
             });
           } else {
-            setCurrentSong(null);
+            // Se a fila sincronizada vier vazia temporariamente por sincronização de rede, mas há uma música ativa:
+            // NÃO interrompa a reprodução! Apenas limpe a indicação de próxima música no HUD.
+            // A tela de QR code só volta quando o show atual terminar e a contagem pós-show se esgotar.
+            setCurrentSong((prev) => {
+              if (prev && !endedSongIdRef.current) {
+                return {
+                  ...prev,
+                  nextSinger: undefined,
+                  nextSong: undefined,
+                  nextVideoId: undefined,
+                };
+              }
+              return null;
+            });
           }
         },
         onCurrentSongChange: (song) => {

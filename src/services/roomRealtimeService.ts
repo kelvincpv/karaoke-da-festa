@@ -232,7 +232,8 @@ export class RoomRealtimeService {
         }
       })
       .on('presence', { event: 'join' }, () => {
-        if (this.currentUser.isOrganizer || this.currentQueue.length > 0) {
+        // Apenas o Telão TV ou o Organizador respondem à entrada de novos participantes com o estado oficial
+        if (this.currentUser.isOrganizer || this.currentUser.name === 'Telão TV') {
           this.broadcastState();
         }
       });
@@ -317,7 +318,8 @@ export class RoomRealtimeService {
         }
       })
       .on('broadcast', { event: 'request_state' }, () => {
-        if (this.currentUser.isOrganizer || this.currentQueue.length > 0 || this.currentSong || this.rankings.length > 0) {
+        // Apenas o Telão TV ou o Organizador respondem a requisições de estado
+        if (this.currentUser.isOrganizer || this.currentUser.name === 'Telão TV') {
           this.broadcastState();
         }
       })
@@ -330,9 +332,6 @@ export class RoomRealtimeService {
           if (payload.currentSong) {
             this.currentSong = payload.currentSong;
             this.callbacks.onCurrentSongChange?.(this.currentSong);
-          } else if (payload.currentSong === null && this.currentQueue.length === 0) {
-            this.currentSong = null;
-            this.callbacks.onCurrentSongChange?.(null);
           }
           if (payload.votingOpen !== undefined) {
             this.votingOpen = payload.votingOpen;
