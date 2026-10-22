@@ -1,8 +1,8 @@
 # Relatório Oficial de Garantia da Qualidade (QA) — Karaokê da Festa 🎤✨
 
 **Responsável:** Engenheiro de Qualidade Sênior (Q.A Sênior)  
-**Ambiente Testado:** Produção / Portal Web (`https://karaoke.kelvinmoreira.com.br`) & Branch `main` (`b3027b1`)  
-**Data da Execução:** 21/10/2026 20:39 (BRT)  
+**Ambiente Testado:** Produção / Portal Web (`https://karaoke.kelvinmoreira.com.br`) & Branch `main` (`10a460f`)  
+**Data da Execução:** 21/10/2026 21:15 (BRT)  
 **Ferramentas Utilizadas:** Git CLI, TypeScript Compiler (`tsc`), Vite Build, Maestri Portal Automation  
 
 ---
@@ -19,39 +19,50 @@
 | **Ciclo 06** | `TASK-QA-06` | Validação do Gate de Entrada, Rankings em Tempo Real (Top 3 Pódio) e Atalhos de Gêneros | Aprovado | 100% |
 | **Ciclo 07** | `TASK-QA-07` | Telão TV Fullscreen Edge-to-Edge c/ HUD Vertical à Direita e Entrada de Sala Longa | Aprovado | 100% |
 | **Ciclo 08** | `TASK-QA-08` | Voto Único por Música por Participante e Bloqueio de Auto-Avaliação do Cantor | Aprovado | 100% |
-| **Ciclo 09** | `TASK-QA-09` | Persistência 100% no Supabase, Auto-Cleanup de Salas Vazias e Encerramento com Cascade | **APROVADO** ✅ | **100%** |
+| **Ciclo 09** | `TASK-QA-09` | Persistência 100% no Supabase, Auto-Cleanup de Salas Vazias e Encerramento com Cascade | Aprovado | 100% |
+| **Ciclo 10** | `TASK-QA-10` | Sincronização Multi-Telão em Tempo Real, Não-Interrupção ao Enfileirar e Safe Cleanup | **APROVADO** ✅ | **100%** |
 
 ---
 
-## 2. Validação do Ciclo 09 — `TASK-QA-09` (Commit `b3027b1`)
+## 2. Validação do Ciclo 10 — `TASK-QA-10` (Commit `10a460f`)
 
-### 2.1 Persistência 100% no Supabase PostgreSQL & Eliminação de Dependência de LocalStorage
-- **Cenário de Teste:** Criação de salas, sincronização de participantes, fila e rankings exclusivamente via banco de dados Supabase (PostgreSQL) e Realtime.
+### 2.1 Sincronização em Tempo Real de Múltiplos Telões (`/tv/:code`)
+- **Cenário de Teste:** Execução paralela de múltiplos clientes do Telão TV (ex.: projetor HDMI + monitor do organizador, ou múltiplas abas).
 - **Evidências Coletadas:**
-  - `rooms.code`: ampliado de `VARCHAR(6)` para `VARCHAR(32)` com constraint atualizada (`check_room_code_len`), suportando códigos de qualquer formato (ex: `FESTA48`, `KARAOKE-2026`).
-  - RPC `rpc_join_room`: cria a sala atomicamente no banco se não existir, registra o participante em `public.participants` e retorna dados íntegros de sessão.
-  - As tabelas filhas (`participants`, `queue_items`, `ratings`, `performances`) mantêm integridade relacional com `room_id REFERENCES public.rooms(id) ON DELETE CASCADE`.
+  - **Captura Contínua de Telemetria:** O listener `onmessage` captura eventos `infoDelivery` do player do YouTube em tempo real, extraindo `currentTime` e `playerState` (tocando/pausado).
+  - **Broadcast Sincronizado:** O serviço `roomRealtimeService` transmite `sendPlaybackSync` a cada 1.5s com timestamp e posição precisa.
+  - **Persistência em Banco:** A cada 6s, o progresso é persistido no PostgreSQL via RPC `rpc_update_playback_state(p_room_id, p_playback)`.
+  - **Alinhamento Automático:** Telões secundários recebem `onPlaybackSync`. Se a diferença de tempo ultrapassar 2.5s, o comando `seekTo(payload.currentTime, true)` ajusta a reprodução suavemente, eliminando eco ou descompasso visual.
+  - **Conexão Tardia:** Ao abrir um novo telão no meio de uma música, a RPC `rpc_get_playback_state` recupera o estado e posiciona o player diretamente no ponto atual.
 - **Status:** **APROVADO** ✅
 
 ---
 
-### 2.2 Auto-Cleanup de Salas Vazias (0 Participantes Ativos)
-- **Cenário de Teste:** Desconexão de todos os participantes ou encerramento pelo organizador.
+### 2.2 Não Interrupção da Música Ativa ao Adicionar Faixas na Fila
+- **Cenário de Teste:** Música em reprodução no Telão TV enquanto convidados adicionam novos pedidos pelo celular.
 - **Evidências Coletadas:**
-  - RPC `rpc_leave_and_cleanup_room`: disparada no evento `beforeunload` do navegador com `fetch(..., { keepalive: true })` e no método `disconnect()`.
-  - Quando a contagem de participantes ativos na sala zera (`remaining_participants = 0`), a sala é automaticamente excluída de `public.rooms`.
-  - A exclusão em cascata (`ON DELETE CASCADE`) remove instantaneamente todos os registros órfãos das tabelas filhas no PostgreSQL.
-  - RPC auxiliar `rpc_cleanup_empty_rooms()`: varredura no banco para expirar participantes inativos (>10 min) e excluir salas abandonadas (>2 min).
+  - Em `onQueueChange`, o comparador `prev && (prev.youtubeVideoId === first.youtubeVideoId || (prev.id && prev.id === first.id))` detecta que a faixa no topo é a mesma que já está em execução.
+  - O estado do player, o iframe e o playback são preservados de forma 100% contínua sem reload ou interrupção.
+  - Apenas as informações da próxima música (`nextSinger`, `nextSong`, `nextVideoId`) são injetadas no card inferior do HUD.
 - **Status:** **APROVADO** ✅
 
 ---
 
-### 2.3 Encerramento Deliberado pelo Organizador
-- **Cenário de Teste:** O organizador clica no botão *"Encerrar e Excluir Sala"* no painel.
+### 2.3 Carregamento Imediato da Fila no Telão TV
+- **Cenário de Teste:** Abertura da rota `/tv/:code` quando a sala já possui músicas cadastradas na fila.
 - **Evidências Coletadas:**
-  - Modal nativo de confirmação previne cliques acidentais.
-  - Execução de `closeAndDeleteRoom()` com broadcast do evento `room_closed` e chamada da RPC `rpc_delete_room(p_room_id)`.
-  - O Modo TV (`TvModePage`) e os clientes de participantes (`RoomParticipantPage`) interceptam o broadcast `room_closed` e eventos de deleção via `onRoomDeleted`, exibem toast informativo e navegam automaticamente para a página inicial `/`.
+  - O manipulador `onQueueChange` avalia `syncedQueue.length > 0` e atribui imediatamente a primeira música ao palco (`setCurrentSong`).
+  - O modo de boas-vindas/QR code central é dispensado de imediato, iniciando a reprodução sem necessidade de intervenção manual no painel do organizador.
+- **Status:** **APROVADO** ✅
+
+---
+
+### 2.4 Safe Room Cleanup (`rpc_leave_and_cleanup_room`)
+- **Cenário de Teste:** Avaliação das regras de proteção contra exclusão acidental de salas no banco de dados.
+- **Evidências Coletadas:**
+  - A RPC `rpc_leave_and_cleanup_room` conta tanto participantes restantes (`v_remaining`) quanto músicas pendentes/em reprodução (`v_queue_remaining`).
+  - **Regra de Blindagem:** A sala **NUNCA** é excluída se houver músicas na fila (`v_queue_remaining > 0`), mesmo que temporariamente todos os navegadores desconectem.
+  - **Proteção Temporal:** A sala só pode ser excluída por inatividade se tiver sido criada há mais de 10 minutos (`created_at < NOW() - INTERVAL '10 minutes'`), impedindo que salas recém-abertas desapareçam antes da chegada dos convidados.
 - **Status:** **APROVADO** ✅
 
 ---
@@ -60,6 +71,10 @@
 
 | Recurso / Componente | Participante | Organizador | Modo TV | Status |
 | :--- | :---: | :---: | :---: | :---: |
+| **Sincronização Multi-Telão (currentTime/play/pause)** | N/A | Sincronizado | **Sim (1.5s / seek)** | **Aprovado** ✅ |
+| **Não-Interrupção ao Enfileirar Música** | Reativo | Reativo | **Sim (Lock de faixa)** | **Aprovado** ✅ |
+| **Carregamento Imediato de Músicas na TV** | N/A | N/A | **Sim (Auto-play)** | **Aprovado** ✅ |
+| **Safe Room Cleanup (>10min e 0 músicas)** | N/A | N/A | **Sim (RPC PostgreSQL)**| **Aprovado** ✅ |
 | **Persistência 100% Supabase PostgreSQL** | **Sim** | **Sim** | **Sim** | **Aprovado** ✅ |
 | **Auto-Cleanup da Sala (0 participantes)** | **Sim (RPC)** | **Sim (RPC)** | **Sim (RPC)** | **Aprovado** ✅ |
 | **Botão 'Encerrar e Excluir Sala' (Cascade)** | N/A | **Sim (Painel)** | Reativo (`room_closed`) | **Aprovado** ✅ |
@@ -77,7 +92,7 @@
 ## 4. Veredito Geral de Engenharia de Qualidade
 
 > **STATUS:** **HOMOLOGADO E APROVADO COM 100% DE CONFORMIDADE** 🚀🏆✨  
-> Todas as salas e filas agora operam de forma 100% centralizada e atômica no Supabase PostgreSQL. Salas abandonadas ou com 0 participantes ativos são excluídas automaticamente do banco, mantendo o banco de dados limpo, seguro e performático.
+> O commit `10a460f` resolve os cenários mais sensíveis de experiência ao vivo: múltiplos telões sincronizados sem descompasso, garantia de que novas adições na fila não interrompam o cantor no palco, início instantâneo de shows pré-enfileirados e proteção rigorosa contra encerramento acidental de salas ativas.
 
 **Assinatura:**  
 *Q.A Sênior — Engenharia de Qualidade Karaokê da Festa*  
