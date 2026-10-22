@@ -975,6 +975,7 @@ GRANT EXECUTE ON FUNCTION public.rpc_heartbeat() TO anon, authenticated, service
 -- ==============================================================================
 
 -- RPC `rpc_leave_and_cleanup_room`
+-- NUNCA exclui a sala se ainda houver músicas ativas na fila ou se for sala recente.
 CREATE OR REPLACE FUNCTION public.rpc_leave_and_cleanup_room(
   p_room_id UUID,
   p_participant_id UUID DEFAULT NULL
@@ -986,6 +987,7 @@ SET search_path = public
 AS $$
 DECLARE
   v_remaining INT;
+  v_queue_remaining INT;
   v_deleted BOOLEAN := FALSE;
 BEGIN
   IF p_participant_id IS NOT NULL THEN
@@ -997,19 +999,79 @@ BEGIN
   FROM public.participants
   WHERE room_id = p_room_id;
 
-  IF v_remaining = 0 THEN
-    DELETE FROM public.rooms WHERE id = p_room_id;
-    v_deleted := TRUE;
+  SELECT COUNT(*) INTO v_queue_remaining
+  FROM public.queue_items
+  WHERE room_id = p_room_id AND status IN ('pending', 'current');
+
+  -- Só exclui a sala se NÃO houver participantes E NÃO houver músicas na fila
+  -- E foi criada há mais de 10 minutos (não apagar sala recém-criada)
+  IF v_remaining = 0 AND v_queue_remaining = 0 THEN
+    DELETE FROM public.rooms 
+    WHERE id = p_room_id 
+      AND created_at < NOW() - INTERVAL '10 minutes';
+
+    IF FOUND THEN
+      v_deleted := TRUE;
+    END IF;
   END IF;
 
   RETURN jsonb_build_object(
     'success', TRUE,
     'remaining_participants', v_remaining,
+    'queue_remaining', v_queue_remaining,
     'room_deleted', v_deleted
   );
 END;
 $$;
 GRANT EXECUTE ON FUNCTION public.rpc_leave_and_cleanup_room(UUID, UUID) TO anon, authenticated, service_role;
+
+-- RPC `rpc_update_playback_state`
+-- Salva a posição exata de reprodução (currentTime, isPlaying, songId) no banco para sincronizar novos telões
+CREATE OR REPLACE FUNCTION public.rpc_update_playback_state(
+  p_room_id UUID,
+  p_playback JSONB
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  UPDATE public.rooms
+  SET settings = jsonb_set(
+    COALESCE(settings, '{}'::jsonb),
+    '{playback_state}',
+    p_playback,
+    true
+  )
+  WHERE id = p_room_id;
+
+  RETURN jsonb_build_object('success', TRUE);
+END;
+$$;
+GRANT EXECUTE ON FUNCTION public.rpc_update_playback_state(UUID, JSONB) TO anon, authenticated, service_role;
+
+-- RPC `rpc_get_playback_state`
+-- Recupera o estado atual de reprodução salvo no banco
+CREATE OR REPLACE FUNCTION public.rpc_get_playback_state(
+  p_room_id UUID
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_playback JSONB;
+BEGIN
+  SELECT settings->'playback_state' INTO v_playback
+  FROM public.rooms
+  WHERE id = p_room_id;
+
+  RETURN COALESCE(v_playback, 'null'::jsonb);
+END;
+$$;
+GRANT EXECUTE ON FUNCTION public.rpc_get_playback_state(UUID) TO anon, authenticated, service_role;
 
 -- RPC `rpc_delete_room`
 CREATE OR REPLACE FUNCTION public.rpc_delete_room(

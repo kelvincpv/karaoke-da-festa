@@ -61,6 +61,14 @@ export interface RankingItemSync {
   lastUpdated?: number;
 }
 
+export interface PlaybackSyncPayload {
+  songId: string;
+  videoId: string;
+  currentTime: number;
+  isPlaying: boolean;
+  timestamp: number;
+}
+
 export interface RoomSyncCallbacks {
   onParticipantsChange?: (participants: RoomParticipantSync[]) => void;
   onQueueChange?: (queue: QueueItemSync[]) => void;
@@ -70,6 +78,7 @@ export interface RoomSyncCallbacks {
   onRatingSubmit?: (rating: { singer: string; song?: string; score: number; voter?: string }) => void;
   onRankingsChange?: (rankings: RankingItemSync[]) => void;
   onPlaybackCommand?: (command: PlaybackCommandPayload) => void;
+  onPlaybackSync?: (payload: PlaybackSyncPayload) => void;
   onVotingCountdown?: (countdown: VotingCountdownPayload) => void;
   onRoomDeleted?: () => void;
 }
@@ -108,6 +117,9 @@ export class RoomRealtimeService {
   private setupBeforeUnload(): void {
     if (typeof window === 'undefined') return;
     window.addEventListener('beforeunload', () => {
+      // Telão TV ou salas com músicas ativas na fila NÃO devem disparar limpeza ao fechar
+      if (this.currentUser.name === 'Telão TV' || this.currentQueue.length > 0) return;
+
       if (isSupabaseConfigured && this.roomId && this.participantDbId) {
         try {
           const url = `${supabaseUrl}/rest/v1/rpc/rpc_leave_and_cleanup_room`;
@@ -218,11 +230,6 @@ export class RoomRealtimeService {
         if (this.callbacks.onParticipantsChange) {
           this.callbacks.onParticipantsChange(participantList);
         }
-
-        // Auto-cleanup: se a sala esvaziar completamente no Realtime, executa rotina de exclusão no Supabase
-        if (participantList.length === 0 && isSupabaseConfigured && this.roomId) {
-          supabase.rpc('rpc_leave_and_cleanup_room', { p_room_id: this.roomId });
-        }
       })
       .on('presence', { event: 'join' }, () => {
         if (this.currentUser.isOrganizer || this.currentQueue.length > 0) {
@@ -234,6 +241,11 @@ export class RoomRealtimeService {
     this.channel
       .on('broadcast', { event: 'room_closed' }, () => {
         this.callbacks.onRoomDeleted?.();
+      })
+      .on('broadcast', { event: 'playback_sync' }, ({ payload }) => {
+        if (payload && this.callbacks.onPlaybackSync) {
+          this.callbacks.onPlaybackSync(payload);
+        }
       })
       .on('broadcast', { event: 'queue_update' }, ({ payload }) => {
         if (Array.isArray(payload?.queue)) {
@@ -247,12 +259,22 @@ export class RoomRealtimeService {
           if (!exists) {
             this.currentQueue = [...this.currentQueue, payload.item];
             this.callbacks.onQueueChange?.(this.currentQueue);
+
+            if (this.currentQueue.length === 1 && !this.currentSong) {
+              this.currentSong = payload.item;
+              this.callbacks.onCurrentSongChange?.(payload.item);
+            }
           }
         }
       })
       .on('broadcast', { event: 'stage_change' }, ({ payload }) => {
-        this.currentSong = payload?.currentSong || null;
-        this.callbacks.onCurrentSongChange?.(this.currentSong);
+        if (payload?.currentSong) {
+          this.currentSong = payload.currentSong;
+          this.callbacks.onCurrentSongChange?.(this.currentSong);
+        } else if (payload?.currentSong === null && this.currentQueue.length === 0) {
+          this.currentSong = null;
+          this.callbacks.onCurrentSongChange?.(null);
+        }
       })
       .on('broadcast', { event: 'voting_toggle' }, ({ payload }) => {
         this.votingOpen = Boolean(payload?.votingOpen);
@@ -305,9 +327,12 @@ export class RoomRealtimeService {
             this.currentQueue = payload.queue;
             this.callbacks.onQueueChange?.(this.currentQueue);
           }
-          if (payload.currentSong !== undefined) {
+          if (payload.currentSong) {
             this.currentSong = payload.currentSong;
             this.callbacks.onCurrentSongChange?.(this.currentSong);
+          } else if (payload.currentSong === null && this.currentQueue.length === 0) {
+            this.currentSong = null;
+            this.callbacks.onCurrentSongChange?.(null);
           }
           if (payload.votingOpen !== undefined) {
             this.votingOpen = payload.votingOpen;
@@ -639,6 +664,18 @@ export class RoomRealtimeService {
     });
 
     this.callbacks.onQueueChange?.(updated);
+
+    // Se a fila estava vazia, a nova música é imediatamente definida como ativa no palco
+    if (updated.length === 1 && !this.currentSong) {
+      this.currentSong = item;
+      this.channel?.send({
+        type: 'broadcast',
+        event: 'stage_change',
+        payload: { currentSong: item },
+      });
+      this.callbacks.onCurrentSongChange?.(item);
+    }
+
     await this.persistQueueItem(item, updated.length);
   }
 
@@ -987,16 +1024,61 @@ export class RoomRealtimeService {
    * Compartilha o estado com novos clientes
    */
   public broadcastState(): void {
+    const activeSong = this.currentSong || (this.currentQueue.length > 0 ? this.currentQueue[0] : null);
     this.channel?.send({
       type: 'broadcast',
       event: 'sync_state',
       payload: {
         queue: this.currentQueue,
-        currentSong: this.currentSong,
+        currentSong: activeSong,
         votingOpen: this.votingOpen,
         rankings: this.rankings,
       },
     });
+  }
+
+  /**
+   * Envia atualização de progresso do vídeo (tempo, status) em broadcast para todos os telões
+   */
+  public sendPlaybackSync(payload: PlaybackSyncPayload): void {
+    this.channel?.send({
+      type: 'broadcast',
+      event: 'playback_sync',
+      payload,
+    });
+  }
+
+  /**
+   * Salva o estado de reprodução no banco de dados para novos telões que conectarem
+   */
+  public async savePlaybackStateToDatabase(payload: PlaybackSyncPayload): Promise<void> {
+    if (!isSupabaseConfigured || !this.roomId) return;
+    try {
+      await supabase.rpc('rpc_update_playback_state', {
+        p_room_id: this.roomId,
+        p_playback: payload,
+      });
+    } catch {
+      // ignore
+    }
+  }
+
+  /**
+   * Recupera o último estado de reprodução persistido no banco de dados
+   */
+  public async getStoredPlaybackState(): Promise<PlaybackSyncPayload | null> {
+    if (!isSupabaseConfigured || !this.roomId) return null;
+    try {
+      const { data, error } = await supabase.rpc('rpc_get_playback_state', {
+        p_room_id: this.roomId,
+      });
+      if (!error && data && data.videoId) {
+        return data as PlaybackSyncPayload;
+      }
+    } catch {
+      // ignore
+    }
+    return null;
   }
 
   /**

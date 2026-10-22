@@ -53,7 +53,32 @@ export const TvModePage: React.FC = () => {
   const navigate = useNavigate();
   const [reactions, setReactions] = useState<FloatingReaction[]>([]);
   const [isVoting, setIsVoting] = useState(false);
-  const [currentSong, setCurrentSong] = useState<CurrentTvSong | null>(null);
+  const [currentSong, setCurrentSong] = useState<CurrentTvSong | null>(() => {
+    try {
+      const savedQueue = localStorage.getItem(`karaoke_queue_${(code || 'FESTA1').toUpperCase()}`);
+      if (savedQueue) {
+        const parsed = JSON.parse(savedQueue);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const first = parsed[0];
+          const next = parsed[1];
+          return {
+            id: first.id,
+            youtubeVideoId: first.youtubeVideoId || '',
+            title: first.title,
+            artist: first.artist,
+            singer: first.singer,
+            duet: first.duet || undefined,
+            nextSinger: next?.singer,
+            nextSong: next?.title,
+            nextVideoId: next?.youtubeVideoId,
+          };
+        }
+      }
+    } catch {
+      // ignore
+    }
+    return null;
+  });
   const [countdownState, setCountdownState] = useState<{
     active: boolean;
     secondsRemaining: number;
@@ -90,6 +115,11 @@ export const TvModePage: React.FC = () => {
   const countdownIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const currentSongRef = useRef<CurrentTvSong | null>(null);
   const endedSongIdRef = useRef<string | null>(null);
+  const currentTimeRef = useRef<number>(0);
+  const isPlayingRef = useRef<boolean>(true);
+  const lastSyncSentRef = useRef<number>(0);
+  const lastDbSaveRef = useRef<number>(0);
+  const isSyncingFromRemoteRef = useRef<boolean>(false);
 
   // Escuta status e eventos do Karaokê Bridge (extensão Chrome)
   useEffect(() => {
@@ -148,6 +178,7 @@ export const TvModePage: React.FC = () => {
     // Se a música mudou, resetar o lock de encerramento da música anterior
     if (currentSong?.id && endedSongIdRef.current !== currentSong.id) {
       endedSongIdRef.current = null;
+      currentTimeRef.current = 0;
     }
   }, [currentSong]);
 
@@ -354,6 +385,40 @@ export const TvModePage: React.FC = () => {
             code: data.info || data.info?.errorCode || 150,
           });
         }
+
+        // 4. Captura e persistência em tempo real do progresso do vídeo
+        if (data.event === 'infoDelivery' && typeof data.info?.currentTime === 'number') {
+          currentTimeRef.current = data.info.currentTime;
+          if (data.info?.playerState === 1) isPlayingRef.current = true;
+          if (data.info?.playerState === 2) isPlayingRef.current = false;
+
+          const now = Date.now();
+          // Transmite broadcast a cada 1.5s para sincronizar outros telões
+          if (!isSyncingFromRemoteRef.current && now - lastSyncSentRef.current > 1500) {
+            lastSyncSentRef.current = now;
+            if (currentSongRef.current?.youtubeVideoId) {
+              serviceRef.current?.sendPlaybackSync({
+                songId: currentSongRef.current.id || '',
+                videoId: currentSongRef.current.youtubeVideoId,
+                currentTime: data.info.currentTime,
+                isPlaying: isPlayingRef.current,
+                timestamp: now,
+              });
+            }
+          }
+
+          // Salva no banco de dados Supabase periodicamente a cada 5 segundos
+          if (now - lastDbSaveRef.current > 5000 && currentSongRef.current?.youtubeVideoId) {
+            lastDbSaveRef.current = now;
+            serviceRef.current?.savePlaybackStateToDatabase({
+              songId: currentSongRef.current.id || '',
+              videoId: currentSongRef.current.youtubeVideoId,
+              currentTime: data.info.currentTime,
+              isPlaying: isPlayingRef.current,
+              timestamp: now,
+            });
+          }
+        }
       } catch {
         // Ignora mensagens de outros iframes/extensões
       }
@@ -384,16 +449,31 @@ export const TvModePage: React.FC = () => {
           if (syncedQueue.length > 0) {
             const first = syncedQueue[0];
             const next = syncedQueue[1];
-            setCurrentSong({
-              id: first.id,
-              youtubeVideoId: first.youtubeVideoId || '',
-              title: first.title,
-              artist: first.artist,
-              singer: first.singer,
-              duet: first.duet || undefined,
-              nextSinger: next?.singer,
-              nextSong: next?.title,
-              nextVideoId: next?.youtubeVideoId,
+            setCurrentSong((prev) => {
+              // Se já estamos tocando essa mesma música, NÃO recria o player nem interrompe a reprodução!
+              // Apenas atualiza as informações da próxima música e dados do palco
+              if (
+                prev &&
+                (prev.youtubeVideoId === first.youtubeVideoId || (prev.id && prev.id === first.id))
+              ) {
+                return {
+                  ...prev,
+                  nextSinger: next?.singer,
+                  nextSong: next?.title,
+                  nextVideoId: next?.youtubeVideoId,
+                };
+              }
+              return {
+                id: first.id,
+                youtubeVideoId: first.youtubeVideoId || '',
+                title: first.title,
+                artist: first.artist,
+                singer: first.singer,
+                duet: first.duet || undefined,
+                nextSinger: next?.singer,
+                nextSong: next?.title,
+                nextVideoId: next?.youtubeVideoId,
+              };
             });
           } else {
             setCurrentSong(null);
@@ -401,19 +481,70 @@ export const TvModePage: React.FC = () => {
         },
         onCurrentSongChange: (song) => {
           if (song) {
-            setCurrentSong((prev) => ({
-              id: song.id,
-              youtubeVideoId: song.youtubeVideoId || '',
-              title: song.title,
-              artist: song.artist,
-              singer: song.singer,
-              duet: song.duet || undefined,
-              nextSinger: prev?.nextSinger,
-              nextSong: prev?.nextSong,
-              nextVideoId: prev?.nextVideoId,
-            }));
-          } else {
-            setCurrentSong(null);
+            setCurrentSong((prev) => {
+              if (
+                prev &&
+                (prev.youtubeVideoId === song.youtubeVideoId || (prev.id && prev.id === song.id))
+              ) {
+                return prev;
+              }
+              return {
+                id: song.id,
+                youtubeVideoId: song.youtubeVideoId || '',
+                title: song.title,
+                artist: song.artist,
+                singer: song.singer,
+                duet: song.duet || undefined,
+                nextSinger: prev?.nextSinger,
+                nextSong: prev?.nextSong,
+                nextVideoId: prev?.nextVideoId,
+              };
+            });
+          }
+        },
+        onPlaybackSync: (payload) => {
+          if (!payload?.videoId) return;
+
+          // Se for o mesmo vídeo ativo
+          if (currentSongRef.current?.youtubeVideoId === payload.videoId) {
+            const currentLocalTime = currentTimeRef.current || 0;
+            const diff = Math.abs(currentLocalTime - payload.currentTime);
+
+            // Ajusta o tempo apenas se a diferença for relevante (> 2.5s)
+            if (diff > 2.5) {
+              isSyncingFromRemoteRef.current = true;
+              sendIframeCommand('seekTo', [payload.currentTime, true]);
+              setTimeout(() => {
+                isSyncingFromRemoteRef.current = false;
+              }, 1200);
+            }
+
+            if (payload.isPlaying && !isPlayingRef.current) {
+              sendIframeCommand('playVideo');
+              isPlayingRef.current = true;
+            } else if (!payload.isPlaying && isPlayingRef.current) {
+              sendIframeCommand('pauseVideo');
+              isPlayingRef.current = false;
+            }
+          } else if (
+            payload.videoId &&
+            currentSongRef.current?.youtubeVideoId !== payload.videoId
+          ) {
+            // Outro telão passou para a próxima música: sincroniza para a mesma música
+            setCurrentSong((prev) => {
+              if (prev?.youtubeVideoId === payload.videoId) return prev;
+              return {
+                id: payload.songId,
+                youtubeVideoId: payload.videoId,
+                title: prev?.title || 'Música da Festa',
+                artist: prev?.artist || 'Karaokê',
+                singer: prev?.singer || 'Cantor',
+                duet: prev?.duet,
+                nextSinger: prev?.nextSinger,
+                nextSong: prev?.nextSong,
+                nextVideoId: prev?.nextVideoId,
+              };
+            });
           }
         },
         onVotingChange: (isOpen) => {
@@ -460,7 +591,25 @@ export const TvModePage: React.FC = () => {
       }
     );
 
-    service.connect();
+    service.connect().then(() => {
+      // Carrega estado de reprodução persistido no Supabase se houver
+      service.getStoredPlaybackState().then((stored) => {
+        if (stored && stored.currentTime > 2) {
+          if (
+            !currentSongRef.current ||
+            currentSongRef.current.youtubeVideoId === stored.videoId
+          ) {
+            currentTimeRef.current = stored.currentTime;
+            setTimeout(() => {
+              sendIframeCommand('seekTo', [stored.currentTime, true]);
+              if (stored.isPlaying) {
+                sendIframeCommand('playVideo');
+              }
+            }, 1500);
+          }
+        }
+      });
+    });
     serviceRef.current = service;
 
     return () => {
