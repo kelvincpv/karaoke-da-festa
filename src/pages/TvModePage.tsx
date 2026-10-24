@@ -960,62 +960,62 @@ export const TvModePage: React.FC = () => {
             )}
           </div>
 
-          {/* COLUNA DIREITA: FAIXA LATERAL DEDICADA (FIEL AO MOCKUP) */}
-          <aside className="w-full md:w-72 lg:w-80 xl:w-[22rem] shrink-0 h-auto md:h-full bg-[#080b14] border-t md:border-t-0 md:border-l border-white/10 flex flex-col justify-between p-3.5 sm:p-4 md:p-5 overflow-y-auto z-10 shadow-2xl">
+          {/* COLUNA DIREITA: FAIXA LATERAL DEDICADA REDUZIDA (70% DO TAMANHO ORIGINAL) */}
+          <aside className="w-full md:w-[202px] lg:w-[224px] xl:w-[246px] shrink-0 h-auto md:h-full bg-[#080b14] border-t md:border-t-0 md:border-l border-white/10 flex flex-col justify-between p-2.5 sm:p-3 md:p-3.5 overflow-y-auto z-10 shadow-2xl">
             {/* 1. TOPO: TÍTULO KARAOKÊ + QR CODE + CÓDIGO DA SALA */}
             <div className="flex flex-col items-center text-center">
-              <h2 className="font-display font-black text-xl md:text-2xl text-white tracking-[0.2em] uppercase">
+              <h2 className="font-display font-black text-lg md:text-xl text-white tracking-[0.2em] uppercase">
                 Karaokê
               </h2>
-              <p className="text-[10px] md:text-xs font-semibold text-text-secondary uppercase tracking-widest mt-1 max-w-[200px] leading-tight">
+              <p className="text-[9px] md:text-[10px] font-semibold text-text-secondary uppercase tracking-wider mt-0.5 max-w-[170px] leading-tight">
                 Escaneie o QR Code<br />para entrar na sala
               </p>
 
               {/* Card do QR Code Branco Nítido com Cantos Arredondados */}
-              <div className="mt-3.5 p-2 md:p-2.5 bg-white rounded-2xl shadow-xl border border-white/20 transition-transform hover:scale-[1.02]">
+              <div className="mt-2.5 p-1.5 md:p-2 bg-white rounded-xl shadow-xl border border-white/20 transition-transform hover:scale-[1.02]">
                 <img
                   src={qrCodeUrl}
                   alt={`QR Code da sala ${roomCode}`}
-                  className="w-28 h-28 sm:w-32 sm:h-32 md:w-36 md:h-36 lg:w-40 lg:h-40 xl:w-44 xl:h-44 object-contain rounded-lg"
+                  className="w-24 h-24 sm:w-28 sm:h-28 md:w-28 md:h-28 lg:w-32 lg:h-32 xl:w-36 xl:h-36 object-contain rounded-lg"
                 />
               </div>
 
               {/* Badge com Código da Sala */}
-              <div className="mt-3 inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-white/5 border border-white/10 text-xs shadow-inner">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-text-muted">CÓDIGO:</span>
-                <span className="font-display font-black tracking-widest text-white">
+              <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-white/5 border border-white/10 text-[11px] shadow-inner">
+                <span className="text-[9px] font-bold uppercase tracking-wider text-text-muted">CÓDIGO:</span>
+                <span className="font-display font-black tracking-widest text-white text-xs">
                   {roomCode}
                 </span>
               </div>
             </div>
 
             {/* Linha Divisória Horizontal Sutil */}
-            <div className="w-full h-px bg-white/10 my-3 md:my-4" />
+            <div className="w-full h-px bg-white/10 my-2 md:my-2.5" />
 
             {/* 2. SEÇÃO: CANTANDO AGORA (CIANO) */}
-            <div className="flex flex-col gap-2">
-              <div className="flex items-center justify-between px-1">
-                <div className="flex items-center gap-1.5 text-[#00c8ff]">
-                  <Activity className="w-4 h-4 animate-pulse text-[#00c8ff]" />
-                  <span className="text-xs font-black uppercase tracking-wider">
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center justify-between px-0.5">
+                <div className="flex items-center gap-1 text-[#00c8ff]">
+                  <Activity className="w-3.5 h-3.5 animate-pulse text-[#00c8ff]" />
+                  <span className="text-[10px] md:text-[11px] font-black uppercase tracking-wider">
                     Cantando Agora
                   </span>
                 </div>
                 {isVoting ? (
-                  <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-brand-gold/20 border border-brand-gold text-brand-gold text-[10px] font-bold animate-pulse shadow-neon-gold">
-                    <Star className="w-3 h-3 fill-brand-gold" /> Votando
+                  <span className="flex items-center gap-0.5 px-1.5 py-0.2 rounded-full bg-brand-gold/20 border border-brand-gold text-brand-gold text-[9px] font-bold animate-pulse shadow-neon-gold">
+                    <Star className="w-2.5 h-2.5 fill-brand-gold" /> Votando
                   </span>
                 ) : (
-                  <span className="text-[10px] text-text-muted font-semibold flex items-center gap-1">
+                  <span className="text-[9px] text-text-muted font-semibold flex items-center gap-1">
                     <span className="w-1.5 h-1.5 rounded-full bg-[#00c8ff] animate-ping" /> Ao Vivo
                   </span>
                 )}
               </div>
 
               {/* Card Cantando Agora com Borda Ciano */}
-              <div className="rounded-2xl border-2 border-[#00c8ff]/70 bg-[#081220]/90 backdrop-blur-md p-3 flex items-center gap-3 shadow-lg shadow-[#00c8ff]/10">
+              <div className="rounded-xl border-2 border-[#00c8ff]/70 bg-[#081220]/90 backdrop-blur-md p-2 md:p-2.5 flex items-center gap-2.5 shadow-md shadow-[#00c8ff]/10">
                 {/* Avatar Circular com Borda Ciano */}
-                <div className="relative w-12 h-12 md:w-14 md:h-14 rounded-full overflow-hidden border-2 border-[#00c8ff] shrink-0 bg-[#0f243a] flex items-center justify-center shadow-md">
+                <div className="relative w-9 h-9 md:w-10 md:h-10 rounded-full overflow-hidden border-2 border-[#00c8ff] shrink-0 bg-[#0f243a] flex items-center justify-center shadow-sm">
                   <img
                     src={`https://api.dicebear.com/7.x/notionists-neutral/svg?seed=${encodeURIComponent(currentSong.singer)}`}
                     alt={currentSong.singer}
@@ -1024,35 +1024,34 @@ export const TvModePage: React.FC = () => {
                       e.currentTarget.style.display = 'none';
                     }}
                   />
-                  <span className="font-display font-black text-white text-base md:text-lg absolute inset-0 flex items-center justify-center -z-10 bg-gradient-to-tr from-brand-cyan/40 to-brand-purple/40">
+                  <span className="font-display font-black text-white text-xs md:text-sm absolute inset-0 flex items-center justify-center -z-10 bg-gradient-to-tr from-brand-cyan/40 to-brand-purple/40">
                     {currentSong.singer ? currentSong.singer.charAt(0).toUpperCase() : '🎤'}
                   </span>
                 </div>
 
                 {/* Informações da Apresentação */}
                 <div className="min-w-0 flex-1">
-                  <h3 className="font-display font-bold text-sm md:text-base text-white truncate leading-tight">
+                  <h3 className="font-display font-bold text-xs md:text-sm text-white truncate leading-tight">
                     {currentSong.singer}
                     {currentSong.duet && (
-                      <span className="text-text-muted font-normal text-xs block truncate mt-0.5">
+                      <span className="text-text-muted font-normal text-[10px] block truncate">
                         + {currentSong.duet}
                       </span>
                     )}
                   </h3>
-                  <p className="text-xs md:text-sm text-white/95 font-medium truncate mt-0.5">
+                  <p className="text-[11px] md:text-xs text-white/95 font-medium truncate mt-0.5">
                     {currentSong.title}
                   </p>
-                  <p className="text-[11px] text-text-muted truncate mt-0.5">
+                  <p className="text-[10px] text-text-muted truncate mt-0.5">
                     {currentSong.artist || 'Karaokê'}
                   </p>
 
                   {/* Nota / Classificação Atual se houver votos */}
                   {currentSingerRanking && currentSingerRanking.totalVotes > 0 && (
-                    <div className="mt-1 flex items-center gap-1.5 text-brand-gold text-[10px] md:text-[11px] font-bold">
-                      <Star className="w-3 h-3 fill-brand-gold" />
+                    <div className="mt-0.5 flex items-center gap-1 text-brand-gold text-[9px] md:text-[10px] font-bold">
+                      <Star className="w-2.5 h-2.5 fill-brand-gold" />
                       <span>
-                        {currentSingerRanking.stars}★ ({currentSingerRanking.totalVotes}{' '}
-                        {currentSingerRanking.totalVotes === 1 ? 'voto' : 'votos'})
+                        {currentSingerRanking.stars}★ ({currentSingerRanking.totalVotes})
                       </span>
                       {currentSingerRanking.pos <= 3 && (
                         <span>{currentSingerRanking.pos === 1 ? '🥇' : currentSingerRanking.pos === 2 ? '🥈' : '🥉'}</span>
@@ -1064,30 +1063,30 @@ export const TvModePage: React.FC = () => {
             </div>
 
             {/* Linha Divisória Horizontal Sutil */}
-            <div className="w-full h-px bg-white/10 my-3 md:my-4" />
+            <div className="w-full h-px bg-white/10 my-2 md:my-2.5" />
 
             {/* 3. SEÇÃO: PRÓXIMO A CANTAR (ROXO) */}
-            <div className="flex flex-col gap-2">
-              <div className="flex items-center justify-between px-1">
-                <div className="flex items-center gap-1.5 text-[#a855f7]">
-                  <ListMusic className="w-4 h-4 text-[#a855f7]" />
-                  <span className="text-xs font-black uppercase tracking-wider">
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center justify-between px-0.5">
+                <div className="flex items-center gap-1 text-[#a855f7]">
+                  <ListMusic className="w-3.5 h-3.5 text-[#a855f7]" />
+                  <span className="text-[10px] md:text-[11px] font-black uppercase tracking-wider">
                     Próximo a Cantar
                   </span>
                 </div>
                 {currentSong.nextSinger && (
-                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-white/5 border border-white/10 text-text-muted">
+                  <span className="text-[9px] font-bold px-1 py-0.2 rounded bg-white/5 border border-white/10 text-text-muted">
                     #2 na Fila
                   </span>
                 )}
               </div>
 
               {/* Card Próximo com Borda Roxa */}
-              <div className="rounded-2xl border-2 border-[#a855f7]/70 bg-[#140a24]/90 backdrop-blur-md p-3 flex items-center gap-3 shadow-lg shadow-[#a855f7]/10">
+              <div className="rounded-xl border-2 border-[#a855f7]/70 bg-[#140a24]/90 backdrop-blur-md p-2 md:p-2.5 flex items-center gap-2.5 shadow-md shadow-[#a855f7]/10">
                 {currentSong.nextSinger ? (
                   <>
                     {/* Avatar ou Thumbnail Circular com Borda Roxa */}
-                    <div className="relative w-12 h-12 md:w-14 md:h-14 rounded-full overflow-hidden border-2 border-[#a855f7] shrink-0 bg-[#25133a] flex items-center justify-center shadow-md">
+                    <div className="relative w-9 h-9 md:w-10 md:h-10 rounded-full overflow-hidden border-2 border-[#a855f7] shrink-0 bg-[#25133a] flex items-center justify-center shadow-sm">
                       {currentSong.nextVideoId ? (
                         <img
                           src={getYouTubeThumbnail(currentSong.nextVideoId)}
@@ -1104,7 +1103,7 @@ export const TvModePage: React.FC = () => {
                               e.currentTarget.style.display = 'none';
                             }}
                           />
-                          <span className="font-display font-black text-white text-base md:text-lg absolute inset-0 flex items-center justify-center -z-10 bg-gradient-to-tr from-brand-purple/40 to-brand-pink/40">
+                          <span className="font-display font-black text-white text-xs md:text-sm absolute inset-0 flex items-center justify-center -z-10 bg-gradient-to-tr from-brand-purple/40 to-brand-pink/40">
                             {currentSong.nextSinger.charAt(0).toUpperCase()}
                           </span>
                         </>
@@ -1113,28 +1112,28 @@ export const TvModePage: React.FC = () => {
 
                     {/* Informações do Próximo Cantor */}
                     <div className="min-w-0 flex-1">
-                      <h4 className="font-display font-bold text-sm md:text-base text-white truncate leading-tight">
+                      <h4 className="font-display font-bold text-xs md:text-sm text-white truncate leading-tight">
                         {currentSong.nextSinger}
                       </h4>
-                      <p className="text-xs md:text-sm text-white/95 font-medium truncate mt-0.5">
+                      <p className="text-[11px] md:text-xs text-white/95 font-medium truncate mt-0.5">
                         {currentSong.nextSong || 'Música a confirmar'}
                       </p>
-                      <p className="text-[11px] text-text-muted truncate mt-0.5">
+                      <p className="text-[10px] text-text-muted truncate mt-0.5">
                         A Seguir na Fila
                       </p>
                     </div>
                   </>
                 ) : (
-                  <div className="w-full flex items-center gap-3 py-1 text-left">
-                    <div className="w-12 h-12 rounded-full bg-white/5 border border-white/10 flex items-center justify-center shrink-0 text-text-muted">
-                      <Mic className="w-5 h-5 opacity-60" />
+                  <div className="w-full flex items-center gap-2 py-0.5 text-left">
+                    <div className="w-9 h-9 md:w-10 md:h-10 rounded-full bg-white/5 border border-white/10 flex items-center justify-center shrink-0 text-text-muted">
+                      <Mic className="w-4 h-4 opacity-60" />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="text-xs md:text-sm font-bold text-text-secondary">
+                      <p className="text-[11px] md:text-xs font-bold text-text-secondary">
                         Palco Livre
                       </p>
-                      <p className="text-[11px] text-text-muted">
-                        Escaneie o QR Code e peça sua música!
+                      <p className="text-[10px] text-text-muted">
+                        Peça pelo QR Code!
                       </p>
                     </div>
                   </div>
