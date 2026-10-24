@@ -20,7 +20,8 @@
 | **Ciclo 07** | `TASK-QA-07` | Telão TV Fullscreen Edge-to-Edge c/ HUD Vertical à Direita e Entrada de Sala Longa | Aprovado | 100% |
 | **Ciclo 08** | `TASK-QA-08` | Voto Único por Música por Participante e Bloqueio de Auto-Avaliação do Cantor | Aprovado | 100% |
 | **Ciclo 09** | `TASK-QA-09` | Persistência 100% no Supabase, Auto-Cleanup de Salas Vazias e Encerramento com Cascade | Aprovado | 100% |
-| **Ciclo 10** | `TASK-QA-10` | Sincronização Multi-Telão em Tempo Real, Não-Interrupção ao Enfileirar e Safe Cleanup | **APROVADO** ✅ | **100%** |
+| **Ciclo 10** | `TASK-QA-10` | Sincronização Multi-Telão em Tempo Real, Não-Interrupção ao Enfileirar e Safe Cleanup | Aprovado | 100% |
+| **Ciclo 11** | `TASK-QA-11` | Redesign Telão TV Lado a Lado (Faixa Lateral Dedicada e Reações Horizontais na Base) | **APROVADO** ✅ | **100%** |
 
 ---
 
@@ -67,10 +68,46 @@
 
 ---
 
-## 3. Matriz Consolidada de Homologação
+## 3. Validação do Ciclo 11 — `TASK-QA-11` (Commit `320dd85`)
+
+### 3.1 Layout Responsivo Lado a Lado (Faixa Lateral Dedicada)
+- **Cenário de Teste:** Visualização do Telão TV em projetores 16:9 (Magcubic HY320), TVs Full HD e telas menores.
+- **Evidências Coletadas:**
+  - **Eliminação de Overlay:** A sobreposição que antes cobria a lateral direita do player foi substituída por um grid flexível de duas colunas lado a lado (`flex-1` para vídeo à esquerda + faixa lateral dedicada `md:w-72 lg:w-80 xl:w-[22rem]` à direita).
+  - **Preservação de Letras:** O vídeo permanece 100% visível, widescreen sem distorção e com todas as legendas do karaokê desobstruídas.
+  - **Fidelidade ao Mockup de Design:**
+    - Topo: Título `KARAOKÊ` em caixa alta com espaçamento uniforme + `ESCANEIE O QR CODE PARA ENTRAR NA SALA` + QR Code em card branco nítido com cantos arredondados + badge de código.
+    - Seção "CANTANDO AGORA" (Ciano): Ícone de atividade de áudio, card com borda ciano 2px, avatar circular, nome do cantor, música, artista e pontuação.
+    - Seção "PRÓXIMO A CANTAR" (Roxo): Ícone musical, card com borda roxa 2px, avatar/thumbnail circular, nome do próximo cantor e título da música.
+- **Status:** **APROVADO** ✅
+
+---
+
+### 3.2 Reações Flutuantes (Emojis) na Extensão Horizontal da Base
+- **Cenário de Teste:** Envio de múltiplos emojis por smartphones durante a reprodução.
+- **Evidências Coletadas:**
+  - **Extensão Horizontal Total:** O container de reações ocupa `inset-x-0 w-full` dentro da coluna do player, distribuindo os emojis de forma fluida e randômica ao longo de toda a largura da tela (4% a 92%).
+  - **Restrição Estrita à Faixa Inferior:** O container é delimitado a `bottom-0 h-28 md:h-36 overflow-hidden` com máscara de gradiente fade-out (`[mask-image:linear-gradient(to_top,black_50%,transparent_100%)]`), garantindo que os emojis nunca subam até a altura das letras de karaokê no centro da tela.
+- **Status:** **APROVADO** ✅
+
+---
+
+### 3.3 Sincronização Karaokê Bridge c/ Bounds da Coluna Esquerda
+- **Cenário de Teste:** Abertura da janela externa do YouTube Premium com a extensão Karaokê Bridge conectada.
+- **Evidências Coletadas:**
+  - A referência `stageContainerRef` foi movida para a coluna esquerda do vídeo (`flex-1`), fazendo com que `getStageBounds()` posicione a janela externa precisamente sobre a área do vídeo, mantendo a faixa lateral direita permanentemente visível.
+- **Status:** **APROVADO** ✅
+
+---
+
+## 4. Matriz Consolidada de Homologação
 
 | Recurso / Componente | Participante | Organizador | Modo TV | Status |
 | :--- | :---: | :---: | :---: | :---: |
+| **Faixa Lateral Dedicada ao Lado do Vídeo** | N/A | N/A | **Sim (Lado a Lado)** | **Aprovado** ✅ |
+| **QR Code Nítido em Card Branco c/ Badge** | N/A | N/A | **Sim (Card 2xl)** | **Aprovado** ✅ |
+| **Cards de Cantor (Ciano) e Próximo (Roxo)** | Sincronizado | Sincronizado | **Sim (Avatares)** | **Aprovado** ✅ |
+| **Reações na Horizontal Inteira na Base** | **Emissor** | N/A | **Sim (h-36 Base)** | **Aprovado** ✅ |
 | **Sincronização Multi-Telão (currentTime/play/pause)** | N/A | Sincronizado | **Sim (1.5s / seek)** | **Aprovado** ✅ |
 | **Não-Interrupção ao Enfileirar Música** | Reativo | Reativo | **Sim (Lock de faixa)** | **Aprovado** ✅ |
 | **Carregamento Imediato de Músicas na TV** | N/A | N/A | **Sim (Auto-play)** | **Aprovado** ✅ |
@@ -82,17 +119,15 @@
 | **Bloqueio de Auto-Avaliação do Cantor** | **Sim (UI + Service)** | N/A | Sincronizado | **Aprovado** ✅ |
 | **Voto Único por Música por Participante** | **Sim (UI + Ledger)** | N/A | Sincronizado | **Aprovado** ✅ |
 | **Player TV Edge-to-Edge (100% Tela)** | N/A | N/A | **Sim (100%)** | **Aprovado** ✅ |
-| **HUD Lateral à Direita (Sem tapar letras)**| N/A | N/A | **Sim (w-80)** | **Aprovado** ✅ |
-| **QR Code Compacto Fundo Branco** | N/A | N/A | **Sim** | **Aprovado** ✅ |
 | **Exibição de Nota Atual / Estreia** | N/A | Sincronizado | **Sim** | **Aprovado** ✅ |
 | **Próximo Cantor c/ Thumbnail no HUD** | Sincronizado | Sincronizado | **Sim** | **Aprovado** ✅ |
 
 ---
 
-## 4. Veredito Geral de Engenharia de Qualidade
+## 5. Veredito Geral de Engenharia de Qualidade
 
 > **STATUS:** **HOMOLOGADO E APROVADO COM 100% DE CONFORMIDADE** 🚀🏆✨  
-> O commit `10a460f` resolve os cenários mais sensíveis de experiência ao vivo: múltiplos telões sincronizados sem descompasso, garantia de que novas adições na fila não interrompam o cantor no palco, início instantâneo de shows pré-enfileirados e proteção rigorosa contra encerramento acidental de salas ativas.
+> O ciclo 11 aperfeiçoa de forma definitiva a ergonomia do telão em projetores e displays widescreen: o vídeo possui espaço limpo e integral para letras, a faixa lateral oferece leitura imediata de quem está cantando e quem é o próximo, e as reações flutuam ao longo de toda a base da tela sem qualquer obstrução das legendas.
 
 **Assinatura:**  
 *Q.A Sênior — Engenharia de Qualidade Karaokê da Festa*  
