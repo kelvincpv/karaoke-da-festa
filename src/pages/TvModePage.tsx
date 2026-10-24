@@ -3,8 +3,6 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import {
   Sparkles,
   Mic,
-  Flame,
-  QrCode,
   ArrowLeft,
   ExternalLink,
   Star,
@@ -13,6 +11,8 @@ import {
   Cast,
   CheckCircle2,
   Trophy,
+  Activity,
+  ListMusic,
 } from 'lucide-react';
 import {
   YOUTUBE_PREMIUM_LOGIN_URL,
@@ -644,444 +644,504 @@ export const TvModePage: React.FC = () => {
       <div className="absolute -bottom-32 -right-32 w-[600px] h-[600px] bg-brand-pink/20 rounded-full blur-[160px] pointer-events-none" />
 
       {currentSong ? (
-        /* MODO TELÃO FULLSCREEN: PLAYER OCUPANDO TODA A TELA COM HUD VERTICAL SOBREPOSTO */
-        <div ref={stageContainerRef} className="relative w-full h-full bg-black overflow-hidden flex items-center justify-center">
-          {bridgeState.isExternalPlaying ? (
-            /* TELÃO DEDICADO QUANDO REPRODUZINDO VIA KARAOKÊ BRIDGE */
-            <div className="relative w-full h-full flex flex-col items-center justify-center p-6 md:p-12 text-center bg-gradient-to-b from-dark-base via-dark-surface to-dark-base overflow-hidden">
-              <div className="absolute w-[450px] h-[450px] bg-brand-purple/20 rounded-full blur-[130px] pointer-events-none animate-pulse-slow" />
-              <div className="absolute w-[350px] h-[350px] bg-red-600/15 rounded-full blur-[100px] pointer-events-none" />
+        /* MODO TELÃO: VÍDEO DEDICADO AO LADO COM FAIXA LATERAL RESPONSIVA */
+        <div className="relative w-full h-full flex flex-col md:flex-row bg-[#06080f] overflow-hidden">
+          {/* COLUNA ESQUERDA: PALCO / PLAYER DO VÍDEO 100% LIMPO */}
+          <div
+            ref={stageContainerRef}
+            className="flex-1 h-full min-w-0 relative flex items-center justify-center bg-black overflow-hidden"
+          >
+            {bridgeState.isExternalPlaying ? (
+              /* TELÃO DEDICADO QUANDO REPRODUZINDO VIA KARAOKÊ BRIDGE */
+              <div className="relative w-full h-full flex flex-col items-center justify-center p-6 md:p-12 text-center bg-gradient-to-b from-dark-base via-dark-surface to-dark-base overflow-hidden">
+                <div className="absolute w-[450px] h-[450px] bg-brand-purple/20 rounded-full blur-[130px] pointer-events-none animate-pulse-slow" />
+                <div className="absolute w-[350px] h-[350px] bg-red-600/15 rounded-full blur-[100px] pointer-events-none" />
 
-              <div className="relative z-10 max-w-2xl flex flex-col items-center space-y-5 animate-fade-in pr-0 md:pr-80">
-                <div className="inline-flex items-center gap-2.5 px-4 py-2 rounded-2xl bg-brand-purple/25 text-brand-purple-light border border-brand-purple/40 text-xs font-bold uppercase tracking-widest shadow-neon-purple">
-                  <Cast className="w-4 h-4 text-brand-pink animate-pulse" />
-                  <span>Reprodução via Karaokê Bridge (YouTube Premium)</span>
+                <div className="relative z-10 max-w-xl flex flex-col items-center space-y-5 animate-fade-in">
+                  <div className="inline-flex items-center gap-2.5 px-4 py-2 rounded-2xl bg-brand-purple/25 text-brand-purple-light border border-brand-purple/40 text-xs font-bold uppercase tracking-widest shadow-neon-purple">
+                    <Cast className="w-4 h-4 text-brand-pink animate-pulse" />
+                    <span>Reprodução via Karaokê Bridge (YouTube Premium)</span>
+                  </div>
+
+                  <div className="space-y-2">
+                    <h2 className="font-display font-black text-2xl md:text-4xl text-white tracking-tight">
+                      {currentSong.title}
+                    </h2>
+                    <p className="text-sm md:text-lg font-bold bg-gradient-to-r from-brand-purple-light via-brand-pink to-brand-cyan-light bg-clip-text text-transparent">
+                      Cantor(a): {currentSong.singer} {currentSong.duet && `+ ${currentSong.duet}`}
+                    </p>
+                  </div>
+
+                  <div className="p-4 rounded-2xl bg-dark-base/85 border border-dark-border/80 backdrop-blur-md max-w-lg space-y-2 shadow-glass text-xs md:text-sm text-text-secondary leading-relaxed">
+                    <p className="flex items-center justify-center gap-2 font-semibold text-white">
+                      <span className="w-2.5 h-2.5 rounded-full bg-status-success animate-ping" />
+                      Janela Oficial do YouTube Ativa sobre o Telão
+                    </p>
+                    <p className="text-text-muted text-xs">
+                      Tocando sem anúncios via conta Premium. Ao término da apresentação, a janela fecha e a votação abre automaticamente!
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-3 pt-2">
+                    <button
+                      onClick={handleCloseBridge}
+                      className="px-4 py-2 rounded-xl border border-dark-border bg-dark-surface hover:bg-dark-elevated text-text-secondary hover:text-white text-xs font-bold transition-all"
+                    >
+                      Fechar Janela Externa
+                    </button>
+                    <button
+                      onClick={() => {
+                        handleCloseBridge();
+                        handleVideoEnded();
+                      }}
+                      className="px-4 py-2 rounded-xl bg-status-danger/20 border border-status-danger/40 text-status-danger hover:bg-status-danger/30 text-xs font-bold transition-all"
+                    >
+                      Finalizar e Abrir Avaliação ⏭
+                    </button>
+                  </div>
                 </div>
+              </div>
+            ) : (
+              <iframe
+                key={currentSong.youtubeVideoId}
+                ref={iframeRef}
+                id="tv-youtube-iframe"
+                onLoad={sendIframeHandshake}
+                className="w-full h-full object-cover"
+                src={`https://www.youtube.com/embed/${currentSong.youtubeVideoId}?autoplay=1&controls=1&rel=0&enablejsapi=1&origin=${encodeURIComponent(
+                  typeof window !== 'undefined' ? window.location.origin : ''
+                )}`}
+                title="YouTube Player"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+              />
+            )}
 
-                <div className="space-y-2">
-                  <h2 className="font-display font-black text-3xl md:text-5xl text-white tracking-tight">
-                    {currentSong.title}
-                  </h2>
-                  <p className="text-base md:text-xl font-bold bg-gradient-to-r from-brand-purple-light via-brand-pink to-brand-cyan-light bg-clip-text text-transparent">
-                    Cantor(a): {currentSong.singer} {currentSong.duet && `+ ${currentSong.duet}`}
-                  </p>
+            {/* CONTROLES DISCRETOS FLUTUANTES NO CANTO SUPERIOR ESQUERDO DO VÍDEO */}
+            <div className="absolute top-3 left-3 z-20 flex items-center gap-2 pointer-events-auto">
+              <Link
+                to="/"
+                className="p-2.5 rounded-xl bg-dark-base/85 hover:bg-dark-surface border border-dark-border/80 text-text-muted hover:text-white backdrop-blur-md transition-all shadow-glass"
+                title="Sair do Modo TV"
+              >
+                <ArrowLeft className="w-5 h-5" />
+              </Link>
+
+              {bridgeState.isExternalPlaying ? (
+                <div className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-brand-purple/60 bg-dark-base/85 text-brand-purple-light backdrop-blur-md text-xs font-bold shadow-neon-purple animate-pulse">
+                  <Cast className="w-3.5 h-3.5 text-brand-pink" />
+                  <span>Bridge Ativa</span>
                 </div>
-
-                <div className="p-4 rounded-2xl bg-dark-base/85 border border-dark-border/80 backdrop-blur-md max-w-lg space-y-2 shadow-glass text-xs md:text-sm text-text-secondary leading-relaxed">
-                  <p className="flex items-center justify-center gap-2 font-semibold text-white">
-                    <span className="w-2.5 h-2.5 rounded-full bg-status-success animate-ping" />
-                    Janela Oficial do YouTube Ativa sobre o Telão
-                  </p>
-                  <p className="text-text-muted text-xs">
-                    Tocando sem anúncios via conta Premium. Ao término da apresentação, a janela fecha e a votação abre automaticamente!
-                  </p>
+              ) : bridgeState.status !== 'not_installed' ? (
+                <div
+                  className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-xl border border-status-success/40 bg-dark-base/85 text-status-success backdrop-blur-md text-xs font-bold shadow-glass"
+                  title="Extensão Karaokê Bridge instalada e pronta"
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>Bridge Pronta</span>
                 </div>
+              ) : null}
 
-                <div className="flex items-center gap-3 pt-2">
-                  <button
-                    onClick={handleCloseBridge}
-                    className="px-4 py-2 rounded-xl border border-dark-border bg-dark-surface hover:bg-dark-elevated text-text-secondary hover:text-white text-xs font-bold transition-all"
+              <button
+                onClick={() => {
+                  if (currentSong?.youtubeVideoId) {
+                    window.open(
+                      `https://www.youtube.com/watch?v=${currentSong.youtubeVideoId}&autoplay=1`,
+                      '_blank',
+                      'noopener,noreferrer'
+                    );
+                  }
+                }}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-red-500/40 bg-dark-base/85 hover:bg-red-500/20 text-red-400 backdrop-blur-md transition-all text-xs font-bold shadow-glass"
+                title="Abrir diretamente no site oficial do YouTube em tela cheia"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Assistir no YouTube</span>
+              </button>
+            </div>
+
+            {/* EMOJIS FLUTUANTES EM TEMPO REAL: FAIXA INFERIOR NA EXTENSÃO HORIZONTAL COMPLETA (ÚNICA SOBREPOSIÇÃO) */}
+            <div className="absolute inset-x-0 bottom-0 h-28 md:h-36 pointer-events-none overflow-hidden z-20 [mask-image:linear-gradient(to_top,black_50%,transparent_100%)] [-webkit-mask-image:linear-gradient(to_top,black_50%,transparent_100%)]">
+              {reactions.map((r) => {
+                const leftPercent =
+                  typeof r.xOffset === 'number' && r.xOffset >= 0 && r.xOffset <= 100
+                    ? Math.min(92, Math.max(5, r.xOffset))
+                    : ((r.id % 84) + 6);
+
+                return (
+                  <div
+                    key={r.id}
+                    className="reaction-particle text-4xl md:text-5xl select-none"
+                    style={{ left: `${leftPercent}%`, bottom: '8px' }}
                   >
-                    Fechar Janela Externa
+                    {r.emoji}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* OVERLAY DE VÍDEO COM RESTRIÇÃO DE INCORPORAÇÃO (ERRO 150/101) */}
+            {videoError?.isBlocked && (
+              <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-dark-base/95 backdrop-blur-xl p-6 md:p-10 text-center animate-fade-in space-y-4">
+                <div className="w-16 h-16 rounded-2xl bg-status-danger/20 border border-status-danger/40 flex items-center justify-center text-3xl shadow-neon-pink mb-1">
+                  <AlertTriangle className="w-8 h-8 text-status-danger" />
+                </div>
+
+                <div className="max-w-xl space-y-2">
+                  <span className="px-3 py-1 rounded-full bg-status-danger/20 text-status-danger border border-status-danger/30 text-xs font-bold uppercase tracking-wider">
+                    Restrição do Proprietário do Vídeo (Erro 150/101)
+                  </span>
+                  <h3 className="font-display font-black text-2xl md:text-3xl text-white">
+                    Reprodução Externa Bloqueada
+                  </h3>
+                  <p className="text-xs md:text-sm text-text-secondary leading-relaxed">
+                    A gravadora de <strong className="text-white">"{currentSong.title}"</strong> desativou a incorporação em outros sites.
+                    {bridgeState.status !== 'not_installed' ? (
+                      <span className="block mt-1 text-brand-purple-light font-medium">
+                        ✨ Sua extensão <strong>Karaokê Bridge</strong> está conectada! Você pode abrir diretamente no YouTube Premium sobre este telão com sincronização total.
+                      </span>
+                    ) : (
+                      ' Você pode abrir no YouTube oficial ou trocar por outra versão liberada.'
+                    )}
+                  </p>
+                </div>
+
+                <div className="flex flex-col sm:flex-row items-center gap-3 pt-2 w-full max-w-lg">
+                  {bridgeState.status !== 'not_installed' ? (
+                    <button
+                      onClick={handleOpenViaBridge}
+                      className="w-full sm:flex-1 py-3 px-4 rounded-xl bg-gradient-to-r from-brand-purple via-brand-pink to-brand-cyan text-white font-bold text-xs flex items-center justify-center gap-2 shadow-neon-purple hover:scale-105 active:scale-95 transition-all"
+                    >
+                      <Cast className="w-4 h-4" />
+                      <span>Abrir no Karaokê Bridge (Recomendado)</span>
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => {
+                        if (currentSong?.youtubeVideoId) {
+                          window.open(
+                            `https://www.youtube.com/watch?v=${currentSong.youtubeVideoId}&autoplay=1`,
+                            '_blank',
+                            'noopener,noreferrer'
+                          );
+                        }
+                      }}
+                      className="w-full sm:flex-1 py-3 px-4 rounded-xl bg-gradient-to-r from-red-600 to-brand-pink text-white font-bold text-xs flex items-center justify-center gap-2 shadow-neon-pink hover:scale-105 active:scale-95 transition-all"
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                      <span>Abrir no YouTube Agora</span>
+                    </button>
+                  )}
+
+                  <button
+                    disabled={isSearchingAlt}
+                    onClick={handleReplaceWithCompatible}
+                    className="w-full sm:flex-1 py-3 px-4 rounded-xl border border-brand-purple/50 bg-brand-purple/20 text-brand-purple-light hover:bg-brand-purple/30 font-bold text-xs flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+                  >
+                    <RefreshCw className={`w-4 h-4 ${isSearchingAlt ? 'animate-spin' : ''}`} />
+                    <span>{isSearchingAlt ? 'Buscando...' : 'Trocar por Versão Compatível'}</span>
                   </button>
+                </div>
+
+                <div className="pt-2">
+                  <button
+                    onClick={() => serviceRef.current?.advanceToNextSong()}
+                    className="text-xs text-text-muted hover:text-white underline transition-colors"
+                  >
+                    Pular para a próxima música da fila ⏭
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* OVERLAY DE CONTAGEM REGRESSIVA PÓS-SHOW (10 SEGUNDOS COM BARRA DE PROGRESSO) */}
+            {countdownState?.active && (
+              <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-black/90 backdrop-blur-xl p-8 text-center animate-fade-in">
+                <div className="inline-flex items-center gap-2 px-6 py-2 rounded-full bg-brand-gold/20 text-brand-gold border border-brand-gold/40 text-sm font-bold uppercase tracking-widest shadow-neon-gold animate-bounce mb-4">
+                  <Star className="w-5 h-5 fill-brand-gold" /> Show Finalizado! Avaliem no Celular!
+                </div>
+
+                <h2 className="font-display font-black text-4xl md:text-6xl text-white mb-2">
+                  Como foi a cantoria de {countdownState.singer}?
+                </h2>
+                <p className="text-base md:text-xl text-brand-pink-light font-medium mb-6">
+                  Música: "{countdownState.song}"
+                </p>
+
+                {/* Grande Círculo de Contagem de Segundos */}
+                <div className="w-24 h-24 rounded-full border-4 border-brand-gold flex items-center justify-center bg-dark-surface shadow-neon-gold mb-6 animate-pulse">
+                  <span className="font-display font-black text-4xl text-brand-gold">
+                    {countdownState.secondsRemaining}s
+                  </span>
+                </div>
+
+                {/* BARRA DE PROGRESSO DE 10 SEGUNDOS */}
+                <div className="w-full max-w-2xl space-y-2">
+                  <div className="flex justify-between text-xs font-bold text-text-secondary uppercase tracking-wider">
+                    <span>Tempo de Votação</span>
+                    <span className="text-brand-gold font-mono">{countdownState.secondsRemaining} segundos restantes</span>
+                  </div>
+                  <div className="w-full h-4 bg-dark-base rounded-full overflow-hidden border border-brand-gold/40 shadow-inner">
+                    <div
+                      className="h-full bg-gradient-to-r from-brand-purple via-brand-pink to-brand-gold transition-all duration-1000 ease-linear shadow-neon-gold"
+                      style={{ width: `${(countdownState.secondsRemaining / 10) * 100}%` }}
+                    />
+                  </div>
+                </div>
+
+                {/* Ranking Parcial / Top 3 da Festa em Tempo Real */}
+                {rankings.length > 0 && (
+                  <div className="mt-4 px-4 py-2.5 rounded-2xl bg-dark-surface/90 border border-brand-gold/40 flex items-center justify-center gap-3 text-xs max-w-lg w-full shadow-neon-gold/20">
+                    <span className="font-bold text-brand-gold uppercase tracking-wider flex items-center gap-1 shrink-0">
+                      <Trophy className="w-3.5 h-3.5" /> Líderes:
+                    </span>
+                    <div className="flex items-center gap-3 overflow-hidden truncate">
+                      {rankings.slice(0, 3).map((r) => (
+                        <span key={r.pos} className="flex items-center gap-1 font-bold text-white shrink-0">
+                          <span>{r.pos === 1 ? '🥇' : r.pos === 2 ? '🥈' : '🥉'}</span>
+                          <span>{r.name}</span>
+                          <span className="text-brand-gold font-normal">({r.stars}★)</span>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Preview da Próxima Música */}
+                <div className="mt-5 p-4 rounded-2xl bg-dark-surface/90 border border-dark-border text-center max-w-lg w-full">
+                  <span className="text-xs font-bold uppercase text-brand-cyan-light tracking-wider block mb-2">
+                    A Seguir:
+                  </span>
+                  <div className="flex items-center justify-center gap-3">
+                    {countdownState.nextVideoId && (
+                      <img
+                        src={getYouTubeThumbnail(countdownState.nextVideoId)}
+                        alt={countdownState.nextSong || ''}
+                        className="w-16 h-11 object-cover rounded-lg border border-dark-border shrink-0 shadow-md"
+                      />
+                    )}
+                    <div className="text-left">
+                      <p className="text-base font-bold text-white">
+                        {countdownState.nextSinger ? (
+                          <>
+                            <span className="text-brand-purple-light">{countdownState.nextSinger}</span>
+                            <span className="text-xs text-text-secondary block">
+                              "{countdownState.nextSong}"
+                            </span>
+                          </>
+                        ) : (
+                          'Palco Livre • Nenhum pedido na fila'
+                        )}
+                      </p>
+                    </div>
+                  </div>
                   <button
                     onClick={() => {
-                      handleCloseBridge();
-                      handleVideoEnded();
+                      if (countdownIntervalRef.current) {
+                        clearInterval(countdownIntervalRef.current);
+                        countdownIntervalRef.current = null;
+                      }
+                      setCountdownState(null);
+                      serviceRef.current?.sendVotingCountdown({
+                        active: false,
+                        secondsRemaining: 0,
+                        songTitle: '',
+                        singerName: '',
+                      });
+                      serviceRef.current?.toggleVoting(false);
+                      serviceRef.current?.advanceToNextSong();
                     }}
-                    className="px-4 py-2 rounded-xl bg-status-danger/20 border border-status-danger/40 text-status-danger hover:bg-status-danger/30 text-xs font-bold transition-all"
+                    className="mt-3 px-4 py-2 rounded-xl bg-gradient-to-r from-brand-purple to-brand-pink text-white font-bold text-xs uppercase tracking-wider shadow-neon-purple hover:scale-105 active:scale-95 transition-all"
                   >
-                    Finalizar e Abrir Avaliação ⏭
+                    Iniciar Próxima Música Agora ⏭
                   </button>
                 </div>
               </div>
-            </div>
-          ) : (
-            <iframe
-              key={currentSong.youtubeVideoId}
-              ref={iframeRef}
-              id="tv-youtube-iframe"
-              onLoad={sendIframeHandshake}
-              className="w-full h-full object-cover"
-              src={`https://www.youtube.com/embed/${currentSong.youtubeVideoId}?autoplay=1&controls=1&rel=0&enablejsapi=1&origin=${encodeURIComponent(
-                typeof window !== 'undefined' ? window.location.origin : ''
-              )}`}
-              title="YouTube Player"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-              allowFullScreen
-            />
-          )}
-
-          {/* CONTROLES DISCRETOS FLUTUANTES NO CANTO SUPERIOR ESQUERDO */}
-          <div className="absolute top-3 md:top-5 left-3 md:left-5 z-20 flex items-center gap-2 pointer-events-auto">
-            <Link
-              to="/"
-              className="p-2.5 rounded-xl bg-dark-base/85 hover:bg-dark-surface border border-dark-border/80 text-text-muted hover:text-white backdrop-blur-md transition-all shadow-glass"
-              title="Sair do Modo TV"
-            >
-              <ArrowLeft className="w-5 h-5" />
-            </Link>
-
-            {bridgeState.isExternalPlaying ? (
-              <div className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-brand-purple/60 bg-dark-base/85 text-brand-purple-light backdrop-blur-md text-xs font-bold shadow-neon-purple animate-pulse">
-                <Cast className="w-3.5 h-3.5 text-brand-pink" />
-                <span>Bridge Ativa</span>
-              </div>
-            ) : bridgeState.status !== 'not_installed' ? (
-              <div
-                className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-xl border border-status-success/40 bg-dark-base/85 text-status-success backdrop-blur-md text-xs font-bold shadow-glass"
-                title="Extensão Karaokê Bridge instalada e pronta"
-              >
-                <CheckCircle2 className="w-3.5 h-3.5" />
-                <span>Bridge Pronta</span>
-              </div>
-            ) : null}
-
-            <button
-              onClick={() => {
-                if (currentSong?.youtubeVideoId) {
-                  window.open(
-                    `https://www.youtube.com/watch?v=${currentSong.youtubeVideoId}&autoplay=1`,
-                    '_blank',
-                    'noopener,noreferrer'
-                  );
-                }
-              }}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-red-500/40 bg-dark-base/85 hover:bg-red-500/20 text-red-400 backdrop-blur-md transition-all text-xs font-bold shadow-glass"
-              title="Abrir diretamente no site oficial do YouTube em tela cheia"
-            >
-              <ExternalLink className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Assistir no YouTube</span>
-            </button>
+            )}
           </div>
 
-          {/* PAINEL VERTICAL SOBREPOSTO ALINHADO À DIREITA (HUD DO TELÃO) */}
-          <aside className="absolute right-3 md:right-5 top-3 md:top-5 bottom-3 md:bottom-5 w-72 md:w-80 flex flex-col justify-between z-20 pointer-events-none gap-2.5">
-            {/* 1. TOPO: QR CODE & CÓDIGO DA SALA */}
-            <div className="pointer-events-auto rounded-2xl border border-brand-purple/40 bg-dark-base/85 backdrop-blur-xl p-3 md:p-3.5 shadow-glass flex flex-col items-center text-center gap-2.5">
-              <div className="flex items-center justify-between w-full border-b border-dark-border/60 pb-1.5 px-1">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-brand-purple-light flex items-center gap-1">
-                  <QrCode className="w-3.5 h-3.5 text-brand-cyan-light" /> Entrar na Sala
-                </span>
-                <span className="text-[10px] text-text-muted">Aponte a câmera</span>
-              </div>
+          {/* COLUNA DIREITA: FAIXA LATERAL DEDICADA (FIEL AO MOCKUP) */}
+          <aside className="w-full md:w-72 lg:w-80 xl:w-[22rem] shrink-0 h-auto md:h-full bg-[#080b14] border-t md:border-t-0 md:border-l border-white/10 flex flex-col justify-between p-3.5 sm:p-4 md:p-5 overflow-y-auto z-10 shadow-2xl">
+            {/* 1. TOPO: TÍTULO KARAOKÊ + QR CODE + CÓDIGO DA SALA */}
+            <div className="flex flex-col items-center text-center">
+              <h2 className="font-display font-black text-xl md:text-2xl text-white tracking-[0.2em] uppercase">
+                Karaokê
+              </h2>
+              <p className="text-[10px] md:text-xs font-semibold text-text-secondary uppercase tracking-widest mt-1 max-w-[200px] leading-tight">
+                Escaneie o QR Code<br />para entrar na sala
+              </p>
 
-              {/* QR Code com borda e fundo branco nítido */}
-              <div className="p-1.5 bg-white rounded-xl shadow-md border border-brand-purple/30">
+              {/* Card do QR Code Branco Nítido com Cantos Arredondados */}
+              <div className="mt-3.5 p-2 md:p-2.5 bg-white rounded-2xl shadow-xl border border-white/20 transition-transform hover:scale-[1.02]">
                 <img
                   src={qrCodeUrl}
                   alt={`QR Code da sala ${roomCode}`}
-                  className="w-24 h-24 md:w-28 md:h-28 rounded-lg"
+                  className="w-28 h-28 sm:w-32 sm:h-32 md:w-36 md:h-36 lg:w-40 lg:h-40 xl:w-44 xl:h-44 object-contain rounded-lg"
                 />
               </div>
 
-              {/* Código da Sala em Destaque Neon */}
-              <div className="w-full py-1.5 px-3 rounded-xl bg-dark-surface/90 border border-brand-purple/50 flex items-center justify-between shadow-neon-purple/20">
+              {/* Badge com Código da Sala */}
+              <div className="mt-3 inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-white/5 border border-white/10 text-xs shadow-inner">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-text-muted">CÓDIGO:</span>
-                <span className="font-display font-black text-lg md:text-xl tracking-[0.2em] text-white">
+                <span className="font-display font-black tracking-widest text-white">
                   {roomCode}
                 </span>
               </div>
             </div>
 
-            {/* 2. CENTRO: QUEM ESTÁ CANTANDO + NOTA ATUAL DA PESSOA */}
-            <div className="pointer-events-auto rounded-2xl border border-brand-pink/40 bg-dark-base/85 backdrop-blur-xl p-3.5 md:p-4 shadow-glass flex flex-col gap-2">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-brand-pink flex items-center gap-1.5">
-                  <Flame className="w-3.5 h-3.5 animate-pulse" /> No Palco Agora
-                </span>
+            {/* Linha Divisória Horizontal Sutil */}
+            <div className="w-full h-px bg-white/10 my-3 md:my-4" />
+
+            {/* 2. SEÇÃO: CANTANDO AGORA (CIANO) */}
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center justify-between px-1">
+                <div className="flex items-center gap-1.5 text-[#00c8ff]">
+                  <Activity className="w-4 h-4 animate-pulse text-[#00c8ff]" />
+                  <span className="text-xs font-black uppercase tracking-wider">
+                    Cantando Agora
+                  </span>
+                </div>
                 {isVoting ? (
                   <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-brand-gold/20 border border-brand-gold text-brand-gold text-[10px] font-bold animate-pulse shadow-neon-gold">
-                    <Star className="w-3 h-3 fill-brand-gold" /> Votação Aberta
+                    <Star className="w-3 h-3 fill-brand-gold" /> Votando
                   </span>
                 ) : (
-                  <span className="flex items-center gap-1 text-[10px] font-semibold text-text-muted">
-                    <Mic className="w-3 h-3 text-brand-purple-light animate-pulse" /> Ao Vivo
+                  <span className="text-[10px] text-text-muted font-semibold flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#00c8ff] animate-ping" /> Ao Vivo
                   </span>
                 )}
               </div>
 
-              {/* Nome do Cantor(a) */}
-              <div>
-                <h3 className="font-display font-black text-lg md:text-xl text-white leading-tight truncate">
-                  <span className="bg-gradient-to-r from-brand-purple-light to-brand-pink bg-clip-text text-transparent">
-                    {currentSong.singer}
-                  </span>
-                  {currentSong.duet && (
-                    <span className="text-text-muted font-normal text-xs block truncate mt-0.5">
-                      + {currentSong.duet} (Dueto)
-                    </span>
-                  )}
-                </h3>
-                <p className="text-xs text-text-secondary truncate mt-1">
-                  🎵 {currentSong.title}
-                </p>
-              </div>
-
-              {/* NOTA ATUAL DO CANTOR */}
-              <div className="mt-1 p-2.5 rounded-xl bg-dark-surface/90 border border-brand-gold/40 flex items-center justify-between shadow-neon-gold/15">
-                <div className="flex items-center gap-1.5">
-                  <Star className="w-4 h-4 text-brand-gold fill-brand-gold" />
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-text-secondary">
-                    Nota Atual:
+              {/* Card Cantando Agora com Borda Ciano */}
+              <div className="rounded-2xl border-2 border-[#00c8ff]/70 bg-[#081220]/90 backdrop-blur-md p-3 flex items-center gap-3 shadow-lg shadow-[#00c8ff]/10">
+                {/* Avatar Circular com Borda Ciano */}
+                <div className="relative w-12 h-12 md:w-14 md:h-14 rounded-full overflow-hidden border-2 border-[#00c8ff] shrink-0 bg-[#0f243a] flex items-center justify-center shadow-md">
+                  <img
+                    src={`https://api.dicebear.com/7.x/notionists-neutral/svg?seed=${encodeURIComponent(currentSong.singer)}`}
+                    alt={currentSong.singer}
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      e.currentTarget.style.display = 'none';
+                    }}
+                  />
+                  <span className="font-display font-black text-white text-base md:text-lg absolute inset-0 flex items-center justify-center -z-10 bg-gradient-to-tr from-brand-cyan/40 to-brand-purple/40">
+                    {currentSong.singer ? currentSong.singer.charAt(0).toUpperCase() : '🎤'}
                   </span>
                 </div>
-                <div className="flex items-center gap-1.5">
-                  {currentSingerRanking && currentSingerRanking.totalVotes > 0 ? (
-                    <>
-                      <span className="font-display font-black text-base md:text-lg text-brand-gold">
-                        {currentSingerRanking.stars} ★
+
+                {/* Informações da Apresentação */}
+                <div className="min-w-0 flex-1">
+                  <h3 className="font-display font-bold text-sm md:text-base text-white truncate leading-tight">
+                    {currentSong.singer}
+                    {currentSong.duet && (
+                      <span className="text-text-muted font-normal text-xs block truncate mt-0.5">
+                        + {currentSong.duet}
                       </span>
-                      <span className="text-[10px] text-text-muted">
-                        ({currentSingerRanking.totalVotes} {currentSingerRanking.totalVotes === 1 ? 'voto' : 'votos'})
+                    )}
+                  </h3>
+                  <p className="text-xs md:text-sm text-white/95 font-medium truncate mt-0.5">
+                    {currentSong.title}
+                  </p>
+                  <p className="text-[11px] text-text-muted truncate mt-0.5">
+                    {currentSong.artist || 'Karaokê'}
+                  </p>
+
+                  {/* Nota / Classificação Atual se houver votos */}
+                  {currentSingerRanking && currentSingerRanking.totalVotes > 0 && (
+                    <div className="mt-1 flex items-center gap-1.5 text-brand-gold text-[10px] md:text-[11px] font-bold">
+                      <Star className="w-3 h-3 fill-brand-gold" />
+                      <span>
+                        {currentSingerRanking.stars}★ ({currentSingerRanking.totalVotes}{' '}
+                        {currentSingerRanking.totalVotes === 1 ? 'voto' : 'votos'})
                       </span>
                       {currentSingerRanking.pos <= 3 && (
-                        <span className="text-sm ml-0.5" title={`#${currentSingerRanking.pos} no Ranking da Festa`}>
-                          {currentSingerRanking.pos === 1 ? '🥇' : currentSingerRanking.pos === 2 ? '🥈' : '🥉'}
-                        </span>
+                        <span>{currentSingerRanking.pos === 1 ? '🥇' : currentSingerRanking.pos === 2 ? '🥈' : '🥉'}</span>
                       )}
-                    </>
-                  ) : (
-                    <span className="text-[11px] font-semibold text-brand-purple-light flex items-center gap-1">
-                      <Sparkles className="w-3 h-3 text-brand-gold" /> Estreia no Palco
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* 3. BASE: QUEM É O PRÓXIMO E QUAL É A MÚSICA */}
-            <div className="pointer-events-auto rounded-2xl border border-brand-cyan/40 bg-dark-base/85 backdrop-blur-xl p-3 md:p-3.5 shadow-glass flex flex-col gap-2">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-brand-cyan-light flex items-center gap-1">
-                  ⏭ A Seguir
-                </span>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-dark-surface border border-dark-border text-text-muted">
-                  {currentSong.nextSinger ? '#2 na Fila' : '—'}
-                </span>
-              </div>
-
-              {currentSong.nextSinger ? (
-                <div className="flex items-center gap-2.5">
-                  {currentSong.nextVideoId ? (
-                    <img
-                      src={getYouTubeThumbnail(currentSong.nextVideoId)}
-                      alt={currentSong.nextSong || ''}
-                      className="w-14 h-10 rounded-lg object-cover border border-dark-border shrink-0 shadow-sm"
-                    />
-                  ) : (
-                    <div className="w-14 h-10 rounded-lg bg-dark-surface border border-dark-border flex items-center justify-center shrink-0">
-                      <Mic className="w-4 h-4 text-text-muted" />
                     </div>
                   )}
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs md:text-sm font-bold text-white truncate">
-                      {currentSong.nextSinger}
-                    </p>
-                    <p className="text-[11px] text-text-secondary truncate">
-                      "{currentSong.nextSong || 'Música a confirmar'}"
-                    </p>
-                  </div>
                 </div>
-              ) : (
-                <div className="py-2 text-center">
-                  <p className="text-xs text-text-muted italic">Palco livre • Seja o próximo a pedir!</p>
-                </div>
-              )}
-            </div>
-          </aside>
-
-          {/* EMOJIS FLUTUANTES EM TEMPO REAL AO LADO DO HUD */}
-          <div className="absolute right-80 md:right-88 bottom-4 top-4 w-32 pointer-events-none overflow-hidden z-20">
-            {reactions.map((r) => (
-              <div
-                key={r.id}
-                className="reaction-particle text-5xl select-none"
-                style={{ left: `${r.xOffset}px`, bottom: '20px' }}
-              >
-                {r.emoji}
-              </div>
-            ))}
-          </div>
-
-          {/* OVERLAY DE VÍDEO COM RESTRIÇÃO DE INCORPORAÇÃO (ERRO 150/101) */}
-          {videoError?.isBlocked && (
-            <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-dark-base/95 backdrop-blur-xl p-6 md:p-10 text-center animate-fade-in space-y-4">
-              <div className="w-16 h-16 rounded-2xl bg-status-danger/20 border border-status-danger/40 flex items-center justify-center text-3xl shadow-neon-pink mb-1">
-                <AlertTriangle className="w-8 h-8 text-status-danger" />
-              </div>
-
-              <div className="max-w-xl space-y-2">
-                <span className="px-3 py-1 rounded-full bg-status-danger/20 text-status-danger border border-status-danger/30 text-xs font-bold uppercase tracking-wider">
-                  Restrição do Proprietário do Vídeo (Erro 150/101)
-                </span>
-                <h3 className="font-display font-black text-2xl md:text-3xl text-white">
-                  Reprodução Externa Bloqueada
-                </h3>
-                <p className="text-xs md:text-sm text-text-secondary leading-relaxed">
-                  A gravadora de <strong className="text-white">"{currentSong.title}"</strong> desativou a incorporação em outros sites.
-                  {bridgeState.status !== 'not_installed' ? (
-                    <span className="block mt-1 text-brand-purple-light font-medium">
-                      ✨ Sua extensão <strong>Karaokê Bridge</strong> está conectada! Você pode abrir diretamente no YouTube Premium sobre este telão com sincronização total.
-                    </span>
-                  ) : (
-                    ' Você pode abrir no YouTube oficial ou trocar por outra versão liberada.'
-                  )}
-                </p>
-              </div>
-
-              <div className="flex flex-col sm:flex-row items-center gap-3 pt-2 w-full max-w-lg">
-                {bridgeState.status !== 'not_installed' ? (
-                  <button
-                    onClick={handleOpenViaBridge}
-                    className="w-full sm:flex-1 py-3 px-4 rounded-xl bg-gradient-to-r from-brand-purple via-brand-pink to-brand-cyan text-white font-bold text-xs flex items-center justify-center gap-2 shadow-neon-purple hover:scale-105 active:scale-95 transition-all"
-                  >
-                    <Cast className="w-4 h-4" />
-                    <span>Abrir no Karaokê Bridge (Recomendado)</span>
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => {
-                      if (currentSong?.youtubeVideoId) {
-                        window.open(
-                          `https://www.youtube.com/watch?v=${currentSong.youtubeVideoId}&autoplay=1`,
-                          '_blank',
-                          'noopener,noreferrer'
-                        );
-                      }
-                    }}
-                    className="w-full sm:flex-1 py-3 px-4 rounded-xl bg-gradient-to-r from-red-600 to-brand-pink text-white font-bold text-xs flex items-center justify-center gap-2 shadow-neon-pink hover:scale-105 active:scale-95 transition-all"
-                  >
-                    <ExternalLink className="w-4 h-4" />
-                    <span>Abrir no YouTube Agora</span>
-                  </button>
-                )}
-
-                <button
-                  disabled={isSearchingAlt}
-                  onClick={handleReplaceWithCompatible}
-                  className="w-full sm:flex-1 py-3 px-4 rounded-xl border border-brand-purple/50 bg-brand-purple/20 text-brand-purple-light hover:bg-brand-purple/30 font-bold text-xs flex items-center justify-center gap-2 transition-all disabled:opacity-50"
-                >
-                  <RefreshCw className={`w-4 h-4 ${isSearchingAlt ? 'animate-spin' : ''}`} />
-                  <span>{isSearchingAlt ? 'Buscando...' : 'Trocar por Versão Compatível'}</span>
-                </button>
-              </div>
-
-              <div className="pt-2">
-                <button
-                  onClick={() => serviceRef.current?.advanceToNextSong()}
-                  className="text-xs text-text-muted hover:text-white underline transition-colors"
-                >
-                  Pular para a próxima música da fila ⏭
-                </button>
               </div>
             </div>
-          )}
 
-          {/* OVERLAY DE CONTAGEM REGRESSIVA PÓS-SHOW (10 SEGUNDOS COM BARRA DE PROGRESSO) */}
-          {countdownState?.active && (
-            <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-black/90 backdrop-blur-xl p-8 text-center animate-fade-in">
-              <div className="inline-flex items-center gap-2 px-6 py-2 rounded-full bg-brand-gold/20 text-brand-gold border border-brand-gold/40 text-sm font-bold uppercase tracking-widest shadow-neon-gold animate-bounce mb-4">
-                <Star className="w-5 h-5 fill-brand-gold" /> Show Finalizado! Avaliem no Celular!
-              </div>
+            {/* Linha Divisória Horizontal Sutil */}
+            <div className="w-full h-px bg-white/10 my-3 md:my-4" />
 
-              <h2 className="font-display font-black text-4xl md:text-6xl text-white mb-2">
-                Como foi a cantoria de {countdownState.singer}?
-              </h2>
-              <p className="text-base md:text-xl text-brand-pink-light font-medium mb-6">
-                Música: "{countdownState.song}"
-              </p>
-
-              {/* Grande Círculo de Contagem de Segundos */}
-              <div className="w-24 h-24 rounded-full border-4 border-brand-gold flex items-center justify-center bg-dark-surface shadow-neon-gold mb-6 animate-pulse">
-                <span className="font-display font-black text-4xl text-brand-gold">
-                  {countdownState.secondsRemaining}s
-                </span>
-              </div>
-
-              {/* BARRA DE PROGRESSO DE 10 SEGUNDOS */}
-              <div className="w-full max-w-2xl space-y-2">
-                <div className="flex justify-between text-xs font-bold text-text-secondary uppercase tracking-wider">
-                  <span>Tempo de Votação</span>
-                  <span className="text-brand-gold font-mono">{countdownState.secondsRemaining} segundos restantes</span>
-                </div>
-                <div className="w-full h-4 bg-dark-base rounded-full overflow-hidden border border-brand-gold/40 shadow-inner">
-                  <div
-                    className="h-full bg-gradient-to-r from-brand-purple via-brand-pink to-brand-gold transition-all duration-1000 ease-linear shadow-neon-gold"
-                    style={{ width: `${(countdownState.secondsRemaining / 10) * 100}%` }}
-                  />
-                </div>
-              </div>
-
-              {/* Ranking Parcial / Top 3 da Festa em Tempo Real */}
-              {rankings.length > 0 && (
-                <div className="mt-4 px-4 py-2.5 rounded-2xl bg-dark-surface/90 border border-brand-gold/40 flex items-center justify-center gap-3 text-xs max-w-lg w-full shadow-neon-gold/20">
-                  <span className="font-bold text-brand-gold uppercase tracking-wider flex items-center gap-1 shrink-0">
-                    <Trophy className="w-3.5 h-3.5" /> Líderes:
+            {/* 3. SEÇÃO: PRÓXIMO A CANTAR (ROXO) */}
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center justify-between px-1">
+                <div className="flex items-center gap-1.5 text-[#a855f7]">
+                  <ListMusic className="w-4 h-4 text-[#a855f7]" />
+                  <span className="text-xs font-black uppercase tracking-wider">
+                    Próximo a Cantar
                   </span>
-                  <div className="flex items-center gap-3 overflow-hidden truncate">
-                    {rankings.slice(0, 3).map((r) => (
-                      <span key={r.pos} className="flex items-center gap-1 font-bold text-white shrink-0">
-                        <span>{r.pos === 1 ? '🥇' : r.pos === 2 ? '🥈' : '🥉'}</span>
-                        <span>{r.name}</span>
-                        <span className="text-brand-gold font-normal">({r.stars}★)</span>
-                      </span>
-                    ))}
-                  </div>
                 </div>
-              )}
+                {currentSong.nextSinger && (
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-white/5 border border-white/10 text-text-muted">
+                    #2 na Fila
+                  </span>
+                )}
+              </div>
 
-              {/* Preview da Próxima Música */}
-              <div className="mt-5 p-4 rounded-2xl bg-dark-surface/90 border border-dark-border text-center max-w-lg w-full">
-                <span className="text-xs font-bold uppercase text-brand-cyan-light tracking-wider block mb-2">
-                  A Seguir:
-                </span>
-                <div className="flex items-center justify-center gap-3">
-                  {countdownState.nextVideoId && (
-                    <img
-                      src={getYouTubeThumbnail(countdownState.nextVideoId)}
-                      alt={countdownState.nextSong || ''}
-                      className="w-16 h-11 object-cover rounded-lg border border-dark-border shrink-0 shadow-md"
-                    />
-                  )}
-                  <div className="text-left">
-                    <p className="text-base font-bold text-white">
-                      {countdownState.nextSinger ? (
+              {/* Card Próximo com Borda Roxa */}
+              <div className="rounded-2xl border-2 border-[#a855f7]/70 bg-[#140a24]/90 backdrop-blur-md p-3 flex items-center gap-3 shadow-lg shadow-[#a855f7]/10">
+                {currentSong.nextSinger ? (
+                  <>
+                    {/* Avatar ou Thumbnail Circular com Borda Roxa */}
+                    <div className="relative w-12 h-12 md:w-14 md:h-14 rounded-full overflow-hidden border-2 border-[#a855f7] shrink-0 bg-[#25133a] flex items-center justify-center shadow-md">
+                      {currentSong.nextVideoId ? (
+                        <img
+                          src={getYouTubeThumbnail(currentSong.nextVideoId)}
+                          alt={currentSong.nextSong || ''}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
                         <>
-                          <span className="text-brand-purple-light">{countdownState.nextSinger}</span>
-                          <span className="text-xs text-text-secondary block">
-                            "{countdownState.nextSong}"
+                          <img
+                            src={`https://api.dicebear.com/7.x/notionists-neutral/svg?seed=${encodeURIComponent(currentSong.nextSinger)}`}
+                            alt={currentSong.nextSinger}
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                              e.currentTarget.style.display = 'none';
+                            }}
+                          />
+                          <span className="font-display font-black text-white text-base md:text-lg absolute inset-0 flex items-center justify-center -z-10 bg-gradient-to-tr from-brand-purple/40 to-brand-pink/40">
+                            {currentSong.nextSinger.charAt(0).toUpperCase()}
                           </span>
                         </>
-                      ) : (
-                        'Palco Livre • Nenhum pedido na fila'
                       )}
-                    </p>
+                    </div>
+
+                    {/* Informações do Próximo Cantor */}
+                    <div className="min-w-0 flex-1">
+                      <h4 className="font-display font-bold text-sm md:text-base text-white truncate leading-tight">
+                        {currentSong.nextSinger}
+                      </h4>
+                      <p className="text-xs md:text-sm text-white/95 font-medium truncate mt-0.5">
+                        {currentSong.nextSong || 'Música a confirmar'}
+                      </p>
+                      <p className="text-[11px] text-text-muted truncate mt-0.5">
+                        A Seguir na Fila
+                      </p>
+                    </div>
+                  </>
+                ) : (
+                  <div className="w-full flex items-center gap-3 py-1 text-left">
+                    <div className="w-12 h-12 rounded-full bg-white/5 border border-white/10 flex items-center justify-center shrink-0 text-text-muted">
+                      <Mic className="w-5 h-5 opacity-60" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs md:text-sm font-bold text-text-secondary">
+                        Palco Livre
+                      </p>
+                      <p className="text-[11px] text-text-muted">
+                        Escaneie o QR Code e peça sua música!
+                      </p>
+                    </div>
                   </div>
-                </div>
-                <button
-                  onClick={() => {
-                    if (countdownIntervalRef.current) {
-                      clearInterval(countdownIntervalRef.current);
-                      countdownIntervalRef.current = null;
-                    }
-                    setCountdownState(null);
-                    serviceRef.current?.sendVotingCountdown({
-                      active: false,
-                      secondsRemaining: 0,
-                      songTitle: '',
-                      singerName: '',
-                    });
-                    serviceRef.current?.toggleVoting(false);
-                    serviceRef.current?.advanceToNextSong();
-                  }}
-                  className="mt-3 px-4 py-2 rounded-xl bg-gradient-to-r from-brand-purple to-brand-pink text-white font-bold text-xs uppercase tracking-wider shadow-neon-purple hover:scale-105 active:scale-95 transition-all"
-                >
-                  Iniciar Próxima Música Agora ⏭
-                </button>
+                )}
               </div>
             </div>
-          )}
+          </aside>
         </div>
       ) : (
         /* TELA DE BOAS-VINDAS / PALCO LIBERADO (QUANDO A FILA ESTÁ VAZIA) */
